@@ -1,0 +1,26 @@
+{
+  "name": "feishu-pi-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Feishu long-connection bridge to pi-coding-agent RPC, with daemon lifecycle management.",
+  "type": "module",
+  "bin": {
+    "feishu-pi-bridge": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js daemon"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.42.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}
