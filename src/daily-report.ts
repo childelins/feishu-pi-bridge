@@ -23,7 +23,7 @@ function splitTitleAndBody(markdown: string): { title: string; body: string } {
   const lines = markdown.split('\n');
   const titleIdx = lines.findIndex((l) => l.startsWith('# '));
   if (titleIdx < 0) {
-    return { title: fallbackTitle(), body: markdown };
+    return { title: fallbackTitle(), body: markdown.replace(/^\s+/, '') };
   }
   const title = lines[titleIdx].slice(2).trim().slice(0, 50) || fallbackTitle();
   const body = lines.slice(titleIdx + 1).join('\n').replace(/^\s+/, '');
