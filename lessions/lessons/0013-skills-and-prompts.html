@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 13 课 · Skills 与 Prompt Templates</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 13 · 扩展方式</p>
+  <h1>Skills 与 Prompt Templates：教 LLM 做事的配方</h1>
+  <p class="meta">时长约 9 分钟</p>
+</header>
+
+<p>
+第 8 课讲过 Pi 有三种扩展方式：Extension、Skill、Prompt Template。
+前 12 课你一直在写 Extension（TypeScript 代码），这一课学<strong>不用写代码</strong>的两种方式。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能：写一个 Skill Markdown 文件让 LLM 自动加载，
+  写一个 Prompt Template 复用提问结构，以及判断什么场景该用 Skill 而非 Extension。
+</aside>
+
+<h2>Skill 是什么</h2>
+
+<p>
+Skill 是一个 Markdown 文件，<strong>注入到系统提示词中</strong>。它教 LLM 怎么做一件事——格式规范、工作流程、注意事项——而不是"帮用户执行代码"。
+LLM 会在每次对话时自动读取匹配的 Skill 文件。
+</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Extension</th><th>Skill</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>本质</strong></td>
+      <td>TypeScript 代码</td>
+      <td>Markdown 文档</td>
+    </tr>
+    <tr>
+      <td><strong>谁执行</strong></td>
+      <td>Node.js 运行时</td>
+      <td>LLM 阅读并遵循</td>
+    </tr>
+    <tr>
+      <td><strong>适合</strong></td>
+      <td>交互、调 API、读写文件</td>
+      <td>编码规范、工作流、行为约束</td>
+    </tr>
+    <tr>
+      <td><strong>修改后</strong></td>
+      <td>需要重启 Pi</td>
+      <td>只需要 <code>/reset</code> 清空上下文</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>写第一个 Skill</h2>
+
+<p>
+Pi 会在几个目录中自动发现 Skill 文件，文件名即有效名。
+建 <code>~/.pi/agent/skills/python-style.md</code>：
+</p>
+
+<pre><code>按照公司 Python 编码规范进行所有修改：
+
+## 格式
+- 每行不超过 88 个字符
+- 使用双引号而非单引号
+- 类型注解为必选项
+- 结尾留一个空行
+
+## 导入顺序
+1. 标准库
+2. 第三方库（空行分隔）
+3. 本地模块（空行分隔）
+
+## 例外
+如果你被要求修改一个不符合此规范的文件，保留原有的引号和缩进风格。
+</code></pre>
+
+<p>
+保存后启动 Pi，输入一条和 Python 相关的指令，LLM 会自动读取这个 Skill。
+你会注意到它生成的代码自动遵循上面的规范。
+</p>
+
+<aside class="note">
+  <span class="label">Skill 是怎么加载的？</span>
+  Pi 在每次对话开始时，在 <code>~/.pi/agent/skills/</code> 和 <code>.pi/skills/</code> 中扫描 <code>.md</code> 文件，
+  把文件名（不含后缀）和内容一起注入系统提示词：<code>[skill: python-style]</code>。
+  文件名就是 Skill 名，LLM 按需使用它们。
+</aside>
+
+<h2>Skill 的生效范围</h2>
+
+<table>
+  <thead>
+    <tr><th>路径</th><th>范围</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>~/.pi/agent/skills/</code></td>
+      <td>全局——所有项目都生效</td>
+    </tr>
+    <tr>
+      <td><code>.pi/skills/</code></td>
+      <td>项目本地——仅当前项目生效（和 <code>.pi/extensions/</code> 同理）</td>
+    </tr>
+    <tr>
+      <td><code>~/.pi/agent/skills/&lt;project-dir&gt;/</code></td>
+      <td>目录绑定——仅在特定项目目录下生效（例如 <code>~/.pi/agent/skills/my-project/</code> 只在 <code>/path/to/my-project</code> 中加载）</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+覆盖优先级：项目本地 < 目录绑定 < 全局。如果同一个文件名出现在多个位置，最具体的那个生效。
+</p>
+
+<h3>动手：项目级 Skill</h3>
+
+<div class="exercise">
+  <h3>动手试试</h3>
+  <ol>
+    <li>创建 <code>~/.pi/agent/skills/python-style.md</code>（用上面的内容）。</li>
+    <li>重启 Pi，问"写一个读取 JSON 文件的 Python 函数"。</li>
+    <li>看 LLM 的输出是否用双引号、有类型注解、< 88 字符。</li>
+    <li>试试 <code>~/.pi/agent/skills/teach-pi/</code> 目录绑定的方式，只在本项目生效。</li>
+  </ol>
+</div>
+
+<h2>自动加载的 Skill</h2>
+
+<p>
+Pi 在启动时还会自动加载一些由<strong>安装在项目中的 npm 包</strong>提供的 Skill。
+这些包以 <code>@pi/skill-</code> 或 <code>pi-skill-</code> 前缀命名，通过 <code>pi install</code> 安装。
+</p>
+
+<pre><code>pi install @pi/skill-git-commit
+</code></pre>
+
+<p>
+安装后，Pi 会在合适的时候自动注入对应 Skill 的内容——不需要用户手动引用。
+</p>
+
+<aside class="note">
+  <span class="label">Skill vs Context File</span>
+  Context File（第 6 课）是你手动用 <code>/context</code> 指定的文件。
+  Skill 是 Pi 自动扫描和注入的——<strong>你不需要主动引用它</strong>。
+</aside>
+
+<h2>Prompt Templates</h2>
+
+<p>
+Prompt Template 是另一种不用写代码的扩展方式。
+它是一段<strong>带变量的文本模板</strong>，展开为完整提示词供 LLM 使用。
+适合你频繁使用但每次参数不同的提问模式。
+</p>
+
+<p>
+Prompt Template 放在 <code>~/.pi/agent/prompts/</code> 或 <code>.pi/prompts/</code> 中，
+格式是 <code>.md</code> 文件，内容用 <code>---</code> 分隔 frontmatter 和正文：
+</p>
+
+<pre><code>---
+name: "review-pr"
+description: "Review a pull request and suggest improvements"
+---
+
+请审查以下 Pull Request 修改：
+
+代码变更：{{diff}}
+
+请重点关注：
+1. 是否有逻辑错误
+2. 是否符合项目编码规范
+3. 是否缺少边界检查
+4. 是否有更好的实现方式
+
+输出格式：列出每个问题的文件路径、行号和修复建议。
+</code></pre>
+
+<p>
+使用方式是在对话中引用模板并传参：
+</p>
+
+<pre><code>用 review-pr 模板，diff 是：
+git diff main...HEAD 的输出粘贴在这里
+</code></pre>
+
+<aside class="note">
+  <span class="label">Pi 的实现差异</span>
+  不同版本的 Pi 对 Skill 的加载机制有差异。请参考当前版本 <code>docs/skills.md</code> 中的详细说明。
+  如果 <code>.pi/agent/skills/</code> 在你的版本里不存在，尝试放在 <code>~/.config/pi/skills/</code> 或 <code>~/.pi/skills/</code>。
+</aside>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. Skill 和 Extension 的核心区别是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">Skill 是 Markdown 文档，Extension 是 TypeScript 代码</label></li>
+      <li><label><input type="radio" name="q1" value="b">Skill 只能全局生效，Extension 可以本地</label></li>
+      <li><label><input type="radio" name="q1" value="c">Skill 需要重启，Extension 支持热重载</label></li>
+      <li><label><input type="radio" name="q1" value="d">Skill 是给用户看的，Extension 是给 LLM 用的</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. Skill 文件修改后怎么让它生效？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">用 <code>/reset</code> 清空上下文</label></li>
+      <li><label><input type="radio" name="q2" value="b">退出 Pi 并重新启动</label></li>
+      <li><label><input type="radio" name="q2" value="c">运行 <code>pi --reload</code> 命令</label></li>
+      <li><label><input type="radio" name="q2" value="d">保存文件后立即自动生效</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. Prompt Template 中的变量用什么语法引用？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a"><code>{{变量名}}</code></label></li>
+      <li><label><input type="radio" name="q3" value="b"><code>${变量名}</code></label></li>
+      <li><label><input type="radio" name="q3" value="c"><code>%变量名%</code></label></li>
+      <li><label><input type="radio" name="q3" value="d"><code>&lt;变量名&gt;</code></label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="a"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方 <code>docs/skills.md</code> 和 <code>docs/prompts.md</code> 全文。
+  注意版本间的路径差异，以实际文档为准。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "Skill 可以包含代码块吗？"、"Prompt Template 和 Context File 有什么区别？"、"怎么知道当前加载了哪些 Skill？"——随时问。
+</aside>
+
+<footer>
+  <p class="prev"><a href="0012-custom-provider.html">← 第 12 课 · 自定义 LLM Provider</a></p>
+  <p class="next"><strong>下一节</strong>：<a href="0014-pi-package.html">第 14 课 · Pi Package 与扩展加载机制</a>——分发和加载共享扩展。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

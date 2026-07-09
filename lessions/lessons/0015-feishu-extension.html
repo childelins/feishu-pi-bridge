@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 15 课 · 飞书长连接接入：不需要公网 IP</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 15 · 实战</p>
+  <h1>飞书长连接接入：不需要公网 IP</h1>
+  <p class="meta">时长约 12 分钟</p>
+</header>
+
+<p>
+第 1–14 课，Extension 四种注册方式已全部解锁。
+现在把它们串起来——用飞书<strong>长连接模式</strong>接入飞书，无需公网 IP。
+</p>
+
+<aside class="note">
+  <span class="label">MISSION 时刻</span>
+  这一课直指 MISSION 核心目标：<em>"编写一个 Extension 来接入飞书 API"</em>。
+  读完这一课，你应该能独立完成一个最小可用的飞书接入方案。
+</aside>
+
+<h2>为什么用长连接，不用 Webhook</h2>
+
+<p>飞书提供两种事件接收方式，差别巨大：</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>请求网址（Webhook）</th><th>长连接模式</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>需要公网 IP</strong></td>
+      <td>是，要有可公网访问的 URL</td>
+      <td>否，本地直接运行</td>
+    </tr>
+    <tr>
+      <td><strong>内网穿透</strong></td>
+      <td>需要（ngrok / frp）</td>
+      <td>不需要</td>
+    </tr>
+    <tr>
+      <td><strong>事件加密</strong></td>
+      <td>是，要处理 Encrypt Key</td>
+      <td>否，明文推送</td>
+    </tr>
+    <tr>
+      <td><strong>开发速度</strong></td>
+      <td>约 1 周</td>
+      <td>约 5 分钟</td>
+    </tr>
+    <tr>
+      <td><strong>消息处理超时</strong></td>
+      <td>30 秒</td>
+      <td>3 秒</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <p><strong>长连接模式的核心优势</strong>：你只需要能访问互联网，不需要公网 IP，不需要域名，不需要防火墙配置。直接在本地开发机上跑就行。</p>
+</div>
+
+<aside class="note">
+  <span class="label">当前限制</span>
+  长连接模式目前<strong>仅支持事件订阅</strong>，不支持回调订阅。
+  同时是<strong>集群模式</strong>：同一应用多客户端部署时，只有一个随机客户端会收到消息，不是广播。
+  3 秒内必须完成处理，否则触发超时重推。
+</aside>
+
+<h2>飞书开放平台配置</h2>
+
+<ol>
+  <li>在飞书开放平台创建企业自建应用</li>
+  <li>获取 <strong>App ID</strong> 和 <strong>App Secret</strong></li>
+  <li>开启 <strong>机器人能力</strong></li>
+  <li>在 <strong>事件订阅</strong> 里选择 <strong>长连接模式</strong>（不是请求网址）</li>
+  <li>添加事件：<code>im.message.receive_v1</code>（接收消息）</li>
+  <li>发布应用到企业，把机器人拉进群</li>
+</ol>
+
+<h2>官方 SDK：@larksuiteoapi/node-sdk</h2>
+
+<p>飞书官方提供了完整的 Node.js SDK，包含 WebSocket 长连接客户端：</p>
+
+<pre><code>npm install @larksuiteoapi/node-sdk</code></pre>
+
+<h2>完整代码：feishu-longconn.ts</h2>
+
+<p>新建 <code>~/.pi/agent/extensions/feishu-longconn.ts</code>：</p>
+
+<pre><code>import * as Lark from "@larksuiteoapi/node-sdk";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+// ---- 飞书基础配置 ----
+
+const baseConfig = {
+  appId: process.env.FEISHU_APP_ID ?? "",
+  appSecret: process.env.FEISHU_APP_SECRET ?? "",
+};
+
+// 飞书 REST API 客户端（用于发送消息）
+const feishuClient = new Lark.Client(baseConfig);
+
+// 飞书 WebSocket 长连接客户端（用于接收消息）
+const feishuWS = new Lark.WSClient({
+  ...baseConfig,
+  loggerLevel: Lark.LoggerLevel.info,
+});
+
+// ---- 消息发送辅助函数 ----
+
+async function replyText(chatId: string, text: string) {
+  await feishuClient.im.v1.message.create({
+    params: { receive_id_type: "chat_id" },
+    data: {
+      receive_id: chatId,
+      content: JSON.stringify({ text }),
+      msg_type: "text",
+    },
+  });
+}
+
+// ---- 启动长连接并接收消息 ----
+
+feishuWS.start({
+  eventDispatcher: new Lark.EventDispatcher({}).register({
+    "im.message.receive_v1": async (data) => {
+      const { message } = data as {
+        message: { chat_id: string; content: string };
+      };
+
+      // 提取用户发送的文本
+      const content = JSON.parse(message.content);
+      const userText = content.text ?? "";
+
+      if (!userText.trim()) return;
+
+      // 获取 chat_id
+      const chatId = message.chat_id;
+
+      // 3 秒内必须完成，先立即回复"正在思考..."
+      // 实际项目中可以先发一个"正在思考"消息
+      await replyText(chatId, `收到：${userText}`);
+
+      // TODO: 这里对接 Pi RPC
+      // 把 userText 发送给 Pi，等待 Pi 的回复
+      // 然后把 Pi 的回复用 replyText 发回飞书
+    },
+  }),
+});
+
+// ---- Pi RPC 接入点（下一节详解） ----
+
+export default function (pi: ExtensionAPI) {
+  // 这里注册 Pi 工具/命令/Provider
+  // Pi 启动时也会加载 ~/.pi/agent/extensions/ 下的所有扩展
+  // 包括你之前的 provider-deepseek.ts、feishu.ts 等
+}</code></pre>
+
+<aside class="note">
+  <span class="label">环境变量</span>
+  在 shell 里设置：<code>export FEISHU_APP_ID=cli_xxx</code> 和 <code>export FEISHU_APP_SECRET=xxx</code>。
+  实际部署时建议用 <code>dotenv</code> 或系统环境变量管理。
+</aside>
+
+<div class="exercise">
+  <h3>动手试试（只需 5 分钟）</h3>
+  <ol>
+    <li><code>npm install @larksuiteoapi/node-sdk</code></li>
+    <li>把上面的代码保存到 <code>~/.pi/agent/extensions/feishu-longconn.ts</code></li>
+    <li>设置环境变量并启动 Pi：<code>pi</code></li>
+    <li>在飞书开放平台确认 <strong>长连接模式</strong> 已启用</li>
+    <li>在群里 @机器人 发消息，看终端是否出现 <code>im.message.receive_v1</code> 事件</li>
+  </ol>
+</div>
+
+<h2>和 Pi RPC 打通</h2>
+
+<p>
+飞书长连接负责<strong>接收消息</strong>，Pi RPC 负责<strong>处理消息</strong>。
+把两者用管道串起来，就是完整的数据流。
+</p>
+
+<pre><code>import * as Lark from "@larksuiteoapi/node-sdk";
+import { spawn } from "child_process";
+
+// ... feishu 配置同上 ...
+
+// 启动 Pi RPC 进程
+const piProcess = spawn("pi", ["--mode", "rpc", "--no-session"]);
+
+// 缓冲 JSONL 行
+let buf = "";
+const pendingResolves = new Map&lt;number, (v: any) =&gt; void&gt;();
+let nextId = 1;
+
+piProcess.stdout.on("data", (chunk) =&gt; {
+  buf += chunk.toString();
+
+  while (true) {
+    const nl = buf.indexOf("\n");
+    if (nl === -1) break;
+
+    let line = buf.slice(0, nl);
+    buf = buf.slice(nl + 1);
+    if (line.endsWith("\r")) line = line.slice(0, -1);
+
+    try {
+      const obj = JSON.parse(line);
+
+      // 匹配 response（Pi 的命令回调）
+      if (obj.type === "response" &amp;&amp; obj.id != null) {
+        const resolve = pendingResolves.get(obj.id);
+        if (resolve) { resolve(obj); pendingResolves.delete(obj.id); }
+      }
+
+      // 匹配 agent_end（Pi 完成处理）
+      if (obj.type === "agent_end") {
+        const text = extractAssistantText(obj.messages ?? []);
+        if (text) {
+          replyText(lastChatId, text);
+        }
+      }
+    } catch {}
+  }
+});
+
+let lastChatId = "";
+
+// 发送命令给 Pi
+async function piPrompt(message: string) {
+  return new Promise&lt;void&gt;((resolve) =&gt; {
+    const id = nextId++;
+    pendingResolves.set(id, () =&gt; resolve());
+    piProcess.stdin.write(JSON.stringify({ id, type: "prompt", message }) + "\n");
+  });
+}
+
+// 从 agent_end.messages 提取助手文本
+function extractAssistantText(messages: any[]): string {
+  return messages
+    .filter((m) =&gt; m.role === "assistant")
+    .map((m) =&gt; {
+      if (Array.isArray(m.content)) {
+        return m.content
+          .filter((c) =&gt; c.type === "text")
+          .map((c) =&gt; c.text)
+          .join("\n");
+      }
+      return typeof m.content === "string" ? m.content : "";
+    })
+    .join("\n\n");
+}
+
+// 启动长连接
+feishuWS.start({
+  eventDispatcher: new Lark.EventDispatcher({}).register({
+    "im.message.receive_v1": async (data) => {
+      const { message } = data as { message: { chat_id: string; content: string } };
+      const content = JSON.parse(message.content);
+      const userText = content.text ?? "";
+
+      if (!userText.trim()) return;
+      lastChatId = message.chat_id;
+
+      // 发给 Pi RPC
+      await piPrompt(userText);
+      // 回复会在 agent_end 里自动发回飞书
+    },
+  }),
+});</code></pre>
+
+<div class="callout">
+  <p><strong>数据流</strong>：飞书消息 → <code>im.message.receive_v1</code> 事件 → <code>piPrompt()</code> → Pi RPC <code>prompt</code> 命令 → <code>agent_end</code> 事件 → <code>replyText()</code> → 飞书消息 API</p>
+</div>
+
+<h2>关键点拆解</h2>
+
+<h3>飞书事件里有什么</h3>
+
+<p><code>im.message.receive_v1</code> 事件的 <code>data</code> 结构：</p>
+
+<pre><code>{
+  "message": {
+    "chat_id": "oc_abc123",       // 群聊 ID
+    "message_id": "om_abc123",     // 消息 ID
+    "message_type": "text",
+    "content": "{\"text\":\"Hello\"}",  // 消息内容（JSON 字符串）
+    "sender": {
+      "sender_id": { "open_id": "ou_abc123" }
+    }
+  }
+}</code></pre>
+
+<p><code>message.content</code> 是 JSON 字符串，需要先 <code>JSON.parse()</code>。</p>
+
+<h3>Pi RPC 的事件流</h3>
+
+<p>Pi RPC 模式通过 stdout 持续输出事件，关键事件：</p>
+
+<table>
+  <thead>
+    <tr><th>事件</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>agent_start</code></td>
+      <td>Pi 开始处理一条消息</td>
+    </tr>
+    <tr>
+      <td><code>message_update</code></td>
+      <td>流式更新，包含 <code>text_delta</code>（文本片段）</td>
+    </tr>
+    <tr>
+      <td><code>agent_end</code></td>
+      <td>Pi 处理完成，包含 LLM 的所有回复消息</td>
+    </tr>
+    <tr>
+      <td><code>response</code></td>
+      <td>命令回调（如 <code>prompt</code> 命令被接受）</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3 秒超时怎么办</h3>
+
+<p>
+长连接模式下飞书要求 <strong>3 秒内</strong> 完成处理。
+Pi 处理复杂任务往往超过 3 秒。
+</p>
+
+<p><strong>两种策略</strong>：</p>
+
+<ol>
+  <li><strong>先发"收到"→ 异步处理</strong>：收到消息后立即返回，用后台任务处理 Pi RPC，完成后再发一条新消息</li>
+  <li><strong>超时设置 + 放弃</strong>：简单任务 3 秒内完成，复杂任务返回"任务已接收，请稍后查看"</li>
+</ol>
+
+<pre><code>// 策略 1 的伪代码
+"im.message.receive_v1": async (data) =&gt; {
+  const chatId = data.message.chat_id;
+  const text = JSON.parse(data.message.content).text;
+
+  // 立即确认收到（3 秒内完成）
+  await replyText(chatId, "收到，正在处理…");
+
+  // 异步交给 Pi
+  await piPrompt(text); // 在 agent_end 里发最终回复
+}
+</code></pre>
+
+<aside class="note">
+  <span class="label">关于 Pi Extension 和飞书客户端的关系</span>
+  上面的 <code>feishu-longconn.ts</code> 是 Pi 的 Extension，在 Pi 启动时加载。
+  但飞书长连接的 <code>WSClient.start()</code> 是个独立进程，不是 Pi 的一部分。
+  实际部署时，你可能有：
+  <ul>
+    <li><code>pi --mode rpc</code> 进程</li>
+    <li><code>node feishu-longconn.ts</code> 进程（或另一个脚本）</li>
+    <li>或者把飞书客户端直接放在 Pi 的 Extension 里，通过 <code>pi.on("message")</code> 等机制对接</li>
+  </ul>
+  本课把它们合并到一个 Extension 文件里演示，方便理解全貌。
+</aside>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. 飞书长连接模式相比 Webhook 模式，哪个说法正确？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">不需要公网 IP，直接本地运行</label></li>
+      <li><label><input type="radio" name="q1" value="b">事件会加密，需要 Encrypt Key</label></li>
+      <li><label><input type="radio" name="q1" value="c">超时时间是 30 秒</label></li>
+      <li><label><input type="radio" name="q1" value="d">支持回调订阅</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 飞书长连接下，消息处理必须在多少秒内完成？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">3 秒</label></li>
+      <li><label><input type="radio" name="q2" value="b">30 秒</label></li>
+      <li><label><input type="radio" name="q2" value="c">60 秒</label></li>
+      <li><label><input type="radio" name="q2" value="d">5 分钟</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. Pi RPC 模式通过什么方式与外部程序通信？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">stdin/stdout 发送 JSONL</label></li>
+      <li><label><input type="radio" name="q3" value="b">WebSocket</label></li>
+      <li><label><input type="radio" name="q3" value="c">HTTP API</label></li>
+      <li><label><input type="radio" name="q3" value="d">本地文件</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="a"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  <strong>飞书开放平台</strong>：<a href="https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/sdk/server-apis/long-connection-mode">长连接模式接入文档</a>，
+  <a href="https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create">发送消息 API</a>，
+  <a href="https://github.com/larksuite/node-sdk">官方 SDK 仓库</a>。
+  <strong>Pi 文档</strong>：<a href="../GLOSSARY.md">RPC 模式</a> 全文。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "多客户端部署时怎么保证消息不丢？"、"长连接断线重连怎么处理？"、"Pi RPC 超时怎么优雅降级？"——随时问。
+</aside>
+
+<footer>
+  <p class="prev"><a href="0014-pi-package.html">← 第 14 课 · Pi Package 与扩展加载机制</a></p>
+  <p class="next"><strong>下一节</strong>：<a href="0016-skill-extension-deep-dive.html">第 16 课 · Skills 与 Extension 深度对比</a>——什么时候该用哪种扩展方式。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

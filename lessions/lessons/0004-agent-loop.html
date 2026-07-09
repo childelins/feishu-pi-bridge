@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 课 · Agent Loop 详解</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 4 · 核心机制</p>
+  <h1>Agent Loop 详解——你按下回车后发生了什么</h1>
+  <p class="meta">时长约 8 分钟</p>
+</header>
+
+<p>
+上一课你了解了 Pi 的会话生命周期。
+现在往里再钻一层：按下回车后，Agent Loop 是怎么转起来的。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能说清楚：LLM 是怎么决定调用哪个工具的、工具执行后结果怎么回到 LLM、循环什么时候终止、以及出错了会发生什么。
+</aside>
+
+<h2>Agent Loop 一句话定义</h2>
+
+<p>
+Agent Loop 就是：
+</p>
+
+<pre><code>重复 {
+  ① LLM 思考（决定下一步做什么）
+  ② 如果需要 → 调用工具（Tool Call）
+  ③ 执行工具，拿到结果（Tool Result）
+  ④ LLM 观察结果，决定继续还是结束
+} 直到 LLM 认为任务完成，输出最终回复
+</code></pre>
+
+<p>
+这个循环是 <strong>所有</strong> AI Coding Agent 的核心。
+Pi 没有魔法，只是在忠实地跑这个循环。
+</p>
+
+<h2>第一步：LLM 拿到上下文</h2>
+
+<p>
+你按下回车，Pi 先构建当前上下文（context），然后把它发给 LLM。
+</p>
+
+<pre class="ascii">发送给 LLM 的上下文包含：
+├── System Prompt（系统提示词，定义 Pi 的身份和能力）
+├── Context Files（AGENTS.md / CLAUDE.md 的内容）
+├── 会话历史（之前的所有消息、工具调用、工具结果）
+├── 当前消息（你刚输入的这句话）
+└── 工具定义（当前可用的所有工具的 name / description / parameters）</pre>
+
+<p>
+System Prompt 告诉 LLM：「你是 Pi，你有这些工具可用，这是项目约定。」
+工具定义告诉 LLM：「你可以调用 read、write、edit、bash，以及其他扩展注册的工具。」
+</p>
+
+<aside class="note">
+  <span class="label">工具定义是动态生成的</span>
+  每次 Agent Loop 开始时，Pi 会根据当前已加载的 Extension 生成工具定义列表。如果你的 Extension 注册了新工具，LLM 下一轮就能看到它。
+</aside>
+
+<h2>第二步：LLM 决定行动</h2>
+
+<p>
+LLM 拿到完整上下文后，生成一个回复。这个回复可能是：
+</p>
+
+<table>
+  <thead>
+    <tr><th>LLM 回复类型</th><th>含义</th><th>例子</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>文本内容</td>
+      <td>直接回复用户，不需要调用工具</td>
+      <td>"这个项目的入口文件是 src/index.ts"</td>
+    </tr>
+    <tr>
+      <td>工具调用（Tool Call）</td>
+      <td>需要执行一个工具来获取信息</td>
+      <td><code>read(path="src/index.ts")</code></td>
+    </tr>
+    <tr>
+      <td>多个工具调用</td>
+      <td>需要并行执行多个工具（如果互不依赖）</td>
+      <td>同时 read 三个文件</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+LLM 通过 <strong>Function Calling</strong>（函数调用）机制来触发工具调用。
+它输出的不是普通文本，而是一个结构化的 JSON 对象：
+</p>
+
+<pre><code>{
+  "tool": "read",
+  "arguments": { "path": "src/index.ts" }
+}</code></pre>
+
+<h2>第三步：Pi 执行工具</h2>
+
+<p>
+LLM 发出工具调用后，<strong>不是</strong> LLM 自己去执行——
+是 Pi 的运行时（AgentSession）负责执行工具，并把结果放回上下文。
+</p>
+
+<pre class="ascii">LLM 输出 tool call
+        ↓
+Pi 解析 tool name + arguments
+        ↓
+查找对应的工具执行函数（内置或 Extension 注册）
+        ↓
+执行工具（如读取文件、运行 shell 命令）
+        ↓
+捕获结果（输出内容 / 错误信息 / 退出码）
+        ↓
+将结果封装为 ToolResultMessage，追加到会话历史
+        ↓
+回到第一步：把更新后的上下文再次发给 LLM</pre>
+
+<p>
+这个「执行 → 追加结果 → 再次发给 LLM」的过程，就是 Agent Loop 的一轮。
+</p>
+
+<h2>第四步：LLM 观察结果，决定继续还是结束</h2>
+
+<p>
+工具执行结果回到 LLM 后，LLM 读取它，然后决定：
+</p>
+
+<ul>
+  <li><strong>任务完成了</strong> → 输出最终文本回复给用户，Loop 结束，回到 <code>>></code> 提示符等待下一次输入。</li>
+  <li><strong>还需要更多信息</strong> → 再次发出工具调用，Loop 继续。</li>
+  <li><strong>出错了</strong> → LLM 看到错误信息，尝试修正后重新调用工具（自动重试）。</li>
+</ul>
+
+<div class="callout">
+  <p><strong>自动重试</strong>：如果工具执行失败（如文件路径不存在、shell 命令报错），Pi 会把错误信息放回给 LLM，LLM 会尝试修正参数后重新调用。这个过程最多重试若干次，超过上限则终止并报告错误。</p>
+</div>
+
+<h2>一个完整循环示例</h2>
+
+<p>
+假设你输入：「帮我看看 src/ 目录下有哪些 .ts 文件，然后读前两个文件的开头。」
+</p>
+
+<pre class="ascii">第 1 轮：
+  你：「帮我看看 src/ 目录下有哪些 .ts 文件...」
+  LLM：「我需要先列出文件」→ tool call: bash("find src/ -name '*.ts'")
+  Pi 执行 → 结果：["src/a.ts", "src/b.ts", "src/c.ts"]
+  LLM 观察结果...
+
+第 2 轮：
+  LLM：「好，我看到了三个文件，让我读前两个」→ tool call: read("src/a.ts") + read("src/b.ts")（并行）
+  Pi 执行 → 结果：a.ts 的内容 / b.ts 的内容
+  LLM 观察结果...
+
+第 3 轮：
+  LLM：「我已经读完了，这是前两个文件的内容...」→ 文本回复
+  Loop 结束，回到 >> 提示符。</pre>
+
+<h2>思考（Thinking）是什么？</h2>
+
+<p>
+某些模型（如 Claude）支持 <strong>Thinking / Reasoning</strong> 模式。
+在这个模式下，LLM 在输出正式回复之前，会先输出一段「内部思考」——
+这段思考 <strong>不展示给用户</strong>（除非你开了 verbose），
+但会被用来指导后续的工具调用。
+</p>
+
+<p>
+你可以在启动时通过 <code>--thinking</code> 参数控制思考等级：
+<code>off</code>、<code>minimal</code>、<code>low</code>、<code>medium</code>、<code>high</code>、<code>xhigh</code>。
+</p>
+
+<aside class="note">
+  <span class="label">思考等级越高</span>
+  LLM 用来「想」的 token 越多，通常结果越准确，但速度越慢、成本越高。根据任务复杂度选择合适的等级。
+</aside>
+
+<h2>Loop 终止条件</h2>
+
+<p>
+Agent Loop 在以下几种情况下终止：
+</p>
+
+<table>
+  <thead>
+    <tr><th>终止原因</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>LLM 输出文本回复</td><td>任务完成，LLM 认为不需要再调用工具</td></tr>
+    <tr><td>上下文溢出</td><td>会话历史太长，触发自动 Compaction（压缩）</td></tr>
+    <tr><td>超过最大轮次</td><td>防止无限循环，Pi 有内置的安全上限</td></tr>
+    <tr><td>用户中断</td><td>按 Escape 或 Ctrl+C，终止当前 Loop</td></tr>
+    <tr><td>工具执行出错且无法自动恢复</td><td>重试次数耗尽，Loop 终止并报错</td></tr>
+  </tbody>
+</table>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. Agent Loop 的「执行工具」这一步是谁做的？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">LLM 自己执行</label></li>
+      <li><label><input type="radio" name="q1" value="b">Pi 的运行时（AgentSession）执行</label></li>
+      <li><label><input type="radio" name="q1" value="c">操作系统直接执行</label></li>
+      <li><label><input type="radio" name="q1" value="d">Extension 执行</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. LLM 通过什么机制触发工具调用？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">系统调用</label></li>
+      <li><label><input type="radio" name="q2" value="b">Function Calling（函数调用）</label></li>
+      <li><label><input type="radio" name="q2" value="c">shell 命令</label></li>
+      <li><label><input type="radio" name="q2" value="d">HTTP 请求</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. 工具执行失败后，Pi 会怎么做？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">直接报错终止</label></li>
+      <li><label><input type="radio" name="q3" value="b">把错误信息给 LLM，LLM 尝试自动重试</label></li>
+      <li><label><input type="radio" name="q3" value="c">忽略错误继续执行</label></li>
+      <li><label><input type="radio" name="q3" value="d">重启整个 Agent Loop</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="b"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  Pi 官方博客：<a href="https://mariozechner.at/posts/2025-11-30-pi-coding-agent/" target="_blank">Why Pi looks the way it does</a>。作者解释了为什么 Pi 选择极简内核 + Agent Loop 这个架构。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  「LLM 是怎么决定调用哪个工具的」、「Thinking 模式对 Agent Loop 有什么影响」——随时问，不用攒。
+</aside>
+
+<footer>
+  <p class="next"><strong>下一节</strong>：<a href="0005-builtin-tools.html">第 5 课 · 四个内置工具详解</a>——read / write / edit / bash 的能力边界和调用时机。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

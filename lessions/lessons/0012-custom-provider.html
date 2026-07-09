@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 12 课 · 自定义 LLM Provider</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 12 · 模型接入</p>
+  <h1>自定义 LLM Provider：接入你自己的模型</h1>
+  <p class="meta">时长约 12 分钟</p>
+</header>
+
+<p>
+第 9–11 课你把 Extension 的四种注册方式学了三样。现在回到 Mission 的核心目标之一：
+<strong>自定义模型供给</strong>。用 <code>pi.registerProvider</code> 接入你喜欢的 LLM API。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能：写出一个完整的 Provider Extension，接入任何 OpenAI 兼容 API（DeepSeek、智谱、OpenRouter、Ollama 等），并理解每个配置字段的含义。
+</aside>
+
+<h2>Provider 是什么</h2>
+
+<p>
+Provider 是一个<strong>注册到 Pi 的模型源</strong>。它告诉 Pi：这里有一个 API 端点，上面挂了这些模型，调用方式是 xxx。
+注册后，Pi 的模型选择器里就会出现你注册的模型。
+</p>
+
+<p>调用签名是<strong>两个参数</strong>——provider 名 + 配置对象：</p>
+
+<pre><code>pi.registerProvider("my-llm", {
+  baseUrl: "https://api.example.com/v1",
+  apiKey: "$MY_API_KEY",
+  api: "openai-completions",
+  models: [
+    {
+      id: "my-model-a",
+      name: "Model A",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    },
+  ],
+});</code></pre>
+
+<aside class="note">
+  <span class="label">易踩的坑</span>
+  第一个参数是 <strong>provider 的 ID</strong>（小写、不可重复），第二个才是配置。
+  如果写成 <code>registerProvider({ name: "...", ... })</code> 单参数形式，Pi 会把整个对象当成 ID、把 <code>undefined</code> 当成配置，启动时报 <code>Cannot read properties of undefined (reading 'streamSimple')</code>。
+</aside>
+
+<h2>字段详解：Provider 级</h2>
+
+<p>第二个参数 <code>config</code> 对象支持这些字段：</p>
+
+<table>
+  <thead>
+    <tr><th>字段</th><th>必填</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>baseUrl</code></td>
+      <td>定义 models 时必填</td>
+      <td>API 端点地址（OpenAI 兼容通常是 <code>https://host/v1</code>，Pi 会自动拼 <code>/chat/completions</code>）</td>
+    </tr>
+    <tr>
+      <td><code>apiKey</code></td>
+      <td>定义 models 时必填<br>（除非用 <code>oauth</code>）</td>
+      <td>认证密钥。支持字面量、<code>$ENV</code> / <code>${ENV}</code> 环境变量插值、<code>!cmd</code> 执行命令</td>
+    </tr>
+    <tr>
+      <td><code>api</code></td>
+      <td>定义 models 时必填</td>
+      <td>API 协议类型，决定 Pi 怎么发请求/解析响应。最常用：<code>"openai-completions"</code>（标准 Chat Completions）</td>
+    </tr>
+    <tr>
+      <td><code>name</code></td>
+      <td>可选</td>
+      <td>给用户看的<strong>显示名</strong>（不是 ID）。不填则显示 provider ID</td>
+    </tr>
+    <tr>
+      <td><code>headers</code></td>
+      <td>可选</td>
+      <td>附加到每个请求的自定义 HTTP 头</td>
+    </tr>
+    <tr>
+      <td><code>authHeader</code></td>
+      <td>可选</td>
+      <td><code>true</code> 时自动添加 <code>Authorization: Bearer &lt;apiKey&gt;</code>。大多数 OpenAI 兼容 API 默认就会加，不用设</td>
+    </tr>
+    <tr>
+      <td><code>models</code></td>
+      <td>可选</td>
+      <td>该端点提供的模型列表。<strong>只要填了，就会替换该 provider 的全部模型</strong></td>
+    </tr>
+    <tr>
+      <td><code>oauth</code></td>
+      <td>可选</td>
+      <td>OAuth 登录流（用于 GitHub Copilot 这类需要 OAuth 的服务）。本课不讲</td>
+    </tr>
+    <tr>
+      <td><code>streamSimple</code></td>
+      <td>可选</td>
+      <td>完全自定义流式请求逻辑，用于非标准 API。本课末尾会提一下</td>
+    </tr>
+  </tbody>
+</table>
+
+<aside class="note">
+  <span class="label">Provider ID 的语义</span>
+  第一个参数（provider ID）如果<strong>和内置重名</strong>（如 <code>"anthropic"</code>、<code>"openai"</code>、<code>"deepseek"</code>），就是<strong>覆盖</strong>：替换/修改内置 provider 的配置。
+  如果是<strong>新名字</strong>（如 <code>"my-llm"</code>），就是<strong>新增</strong>：和内置 provider 并存。
+  想给内置模型套一个代理？直接 <code>registerProvider("anthropic", { baseUrl: "..." })</code> 即可。
+</aside>
+
+<h2>字段详解：Model 级</h2>
+
+<p><code>models</code> 数组里每个对象的字段：</p>
+
+<table>
+  <thead>
+    <tr><th>字段</th><th>必填</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>id</code></td>
+      <td>是</td>
+      <td>调 API 时实际传的 <code>model</code> 字段值（如 <code>"deepseek-chat"</code>）</td>
+    </tr>
+    <tr>
+      <td><code>name</code></td>
+      <td>是</td>
+      <td>UI 显示名（如 <code>"DeepSeek V3"</code>）</td>
+    </tr>
+    <tr>
+      <td><code>reasoning</code></td>
+      <td>是</td>
+      <td>是否支持<strong>扩展思考</strong>（DeepSeek-R1、Claude thinking、o1 这类）。决定 Pi 是否给模型发思考级别参数</td>
+    </tr>
+    <tr>
+      <td><code>input</code></td>
+      <td>是</td>
+      <td>支持的输入类型数组：<code>["text"]</code> 或 <code>["text", "image"]</code>。决定能否贴图</td>
+    </tr>
+    <tr>
+      <td><code>cost</code></td>
+      <td>是</td>
+      <td>每百万 token 的费用（美元）：<code>{ input, output, cacheRead, cacheWrite }</code>。用于 Pi 统计花费，不知道就全填 0</td>
+    </tr>
+    <tr>
+      <td><code>contextWindow</code></td>
+      <td>是</td>
+      <td>模型<strong>上下文窗口</strong>大小（输入 token 上限）。DeepSeek V4 是 1000000，GPT-4o 是 128000</td>
+    </tr>
+    <tr>
+      <td><code>maxTokens</code></td>
+      <td>是</td>
+      <td>模型<strong>单次输出</strong>的最大 token 数。和 <code>contextWindow</code> 不是一回事</td>
+    </tr>
+    <tr>
+      <td><code>api</code></td>
+      <td>可选</td>
+      <td>覆盖 provider 级的 <code>api</code>。同一个 provider 下混搭不同协议时用</td>
+    </tr>
+    <tr>
+      <td><code>baseUrl</code></td>
+      <td>可选</td>
+      <td>覆盖 provider 级的 <code>baseUrl</code></td>
+    </tr>
+    <tr>
+      <td><code>thinkingLevelMap</code></td>
+      <td>可选</td>
+      <td>把 Pi 的思考级别（<code>minimal/low/medium/high/xhigh</code>）映射到 API 实际接受的值。<code>null</code> 表示该级别不支持</td>
+    </tr>
+    <tr>
+      <td><code>compat</code></td>
+      <td>可选</td>
+      <td>OpenAI 兼容性微调（见下文）</td>
+    </tr>
+    <tr>
+      <td><code>headers</code></td>
+      <td>可选</td>
+      <td>只对这个 model 生效的请求头</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>关于 <code>api</code> 类型</h3>
+
+<p>Pi 内置支持的协议（最常用三个加粗）：</p>
+
+<ul>
+  <li><strong><code>"openai-completions"</code></strong> —— OpenAI Chat Completions（<code>/v1/chat/completions</code>）。DeepSeek、智谱、Moonshot、通义、OpenRouter、Ollama 等绝大多数国产/开源 API 都用这个</li>
+  <li><code>"openai-responses"</code> —— OpenAI Responses API（新版 <code>/v1/responses</code>）。官方 OpenAI 新接口</li>
+  <li><code>"anthropic-messages"</code> —— Anthropic Messages API。Claude 官方 + 一些代理</li>
+  <li><code>"azure-openai-responses"</code> / <code>"openai-codex-responses"</code> / <code>"google-generative-ai"</code> / <code>"google-vertex"</code> / <code>"mistral-conversations"</code> / <code>"bedrock-converse-stream"</code> —— 各家专用协议</li>
+</ul>
+
+<p>如果接的服务说"OpenAI 兼容"，99% 是 <code>"openai-completions"</code>。</p>
+
+<h3>关于 <code>compat</code></h3>
+
+<p>不同厂商的"OpenAI 兼容"实现细节有差异，<code>compat</code> 用来告诉 Pi 这些差异：</p>
+
+<table>
+  <thead>
+    <tr><th>字段</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>supportsStore</code></td><td>是否支持 OpenAI 的 <code>store</code> 参数（默认 true，多数国产 API 要设 false）</td></tr>
+    <tr><td><code>supportsDeveloperRole</code></td><td>是否支持 <code>developer</code> role（OpenAI 新版），不支持就 false</td></tr>
+    <tr><td><code>requiresReasoningContentOnAssistantMessages</code></td><td>思考模型是否要求 assistant 消息里带上 <code>reasoning_content</code> 字段（DeepSeek 要 true）</td></tr>
+    <tr><td><code>thinkingFormat</code></td><td>思考内容的序列化格式，<code>"deepseek"</code> / <code>"anthropic"</code> / <code>"openai"</code> 等</td></tr>
+    <tr><td><code>forceAdaptiveThinking</code></td><td>Anthropic 兼容且要求 adaptive thinking 时设 true</td></tr>
+  </tbody>
+</table>
+
+<p>如果不知道填什么，先留空（不设 <code>compat</code>）；遇到思考模型输出错乱、或参数不识别的报错，再回头按官方内置 provider 的同款配置抄。</p>
+
+<h2>动手：接入 DeepSeek</h2>
+
+<p>
+  建 <code>~/.pi/agent/extensions/provider-deepseek.ts</code>。
+  注意：Pi 内置已经有 <code>deepseek</code> provider（直连 <code>api.deepseek.com</code>），如果你要走自己的网关或代理，建议换一个 ID 避免覆盖。这里用 <code>"my-deepseek"</code>：
+</p>
+
+<pre><code>import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.registerProvider("my-deepseek", {
+    name: "DeepSeek (自定义)",
+    baseUrl: "https://api.deepseek.com/v1",
+    apiKey: "$DEEPSEEK_API_KEY",
+    api: "openai-completions",
+    models: [
+      {
+        id: "deepseek-chat",
+        name: "DeepSeek V3",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0.27, output: 1.1, cacheRead: 0.07, cacheWrite: 0 },
+        contextWindow: 64000,
+        maxTokens: 8192,
+      },
+      {
+        id: "deepseek-reasoner",
+        name: "DeepSeek R1",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0.55, output: 2.19, cacheRead: 0.14, cacheWrite: 0 },
+        contextWindow: 64000,
+        maxTokens: 8192,
+        compat: {
+          supportsStore: false,
+          supportsDeveloperRole: false,
+          requiresReasoningContentOnAssistantMessages: true,
+          thinkingFormat: "deepseek",
+        },
+      },
+    ],
+  });
+}</code></pre>
+
+<p>
+  启动前：<code>export DEEPSEEK_API_KEY=sk-xxx</code>。
+  重启 Pi，用 <code>/model</code>（或 <code>/provider</code>）就能看到 <code>my-deepseek/deepseek-chat</code> 出现在列表里。
+</p>
+
+<aside class="note">
+  <span class="label">两种写法选一</span>
+  <p>
+    如果你<strong>只是</strong>想把内置 DeepSeek 走的地址改到自己代理，不重新声明模型，那就直接覆盖：
+    <code>pi.registerProvider("deepseek", { baseUrl: "https://your-proxy/v1" })</code>——只改 baseUrl，模型列表自动保留。
+  </p>
+  <p>
+    如果代理上挂的是<strong>不同的模型</strong>，就得像上面那样声明 <code>models</code>，并且 provider ID 要换一个（覆盖内置时，模型列表会被完全替换）。
+  </p>
+</aside>
+
+<div class="exercise">
+  <h3>动手试试</h3>
+  <ol>
+    <li>创建一个 Provider Extension 文件。</li>
+    <li>设置对应 API Key 的环境变量。</li>
+    <li>重启 Pi，输入 <code>/model</code> 确认新模型出现在列表里。</li>
+    <li>用 <code>/model my-deepseek/deepseek-chat</code>（或屏幕上提示的格式）切换到新模型。</li>
+    <li>输入任意一句话，确认回复来自你的模型。</li>
+  </ol>
+</div>
+
+<h2>动手：接入本地 Ollama</h2>
+
+<p>本机跑了 Ollama 的话同样一个 Extension 就能接入：</p>
+
+<pre><code>import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.registerProvider("ollama", {
+    name: "Ollama (Local)",
+    baseUrl: "http://localhost:11434/v1",
+    apiKey: "ollama", // Ollama 不需要密钥，但字段不能为空
+    api: "openai-completions",
+    models: [
+      {
+        id: "llama3.2",
+        name: "Llama 3.2 (8B)",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 8192,
+        maxTokens: 4096,
+      },
+      {
+        id: "qwen2.5-coder",
+        name: "Qwen 2.5 Coder",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 8192,
+        maxTokens: 4096,
+      },
+    ],
+  });
+}</code></pre>
+
+<aside class="note">
+  <span class="label">为什么本地模型还要填 cost</span>
+  Pi 用 <code>cost</code> 统计会话花费；本地模型不扣钱，但字段必填，全置 0 即可。
+  <code>apiKey</code> 也类似——Ollama 不验签，但 Pi 的 schema 要求非空字符串。
+</aside>
+
+<h2>高级：自定义请求头与流式逻辑</h2>
+
+<p>真实场景里你可能需要：</p>
+
+<pre><code>// 1. 走企业代理时加自定义鉴权头
+pi.registerProvider("corp-ai", {
+  baseUrl: "https://ai.corp.com/v1",
+  api: "openai-completions",
+  headers: {
+    "X-Corp-Auth": "$CORP_AUTH_TOKEN", // 同样支持 $ENV 插值
+  },
+  models: [/* ... */],
+});
+
+// 2. 动态发现模型（async 工厂函数）
+export default async function (pi: ExtensionAPI) {
+  const res = await fetch("http://localhost:1234/v1/models");
+  const data = (await res.json()).data;
+  pi.registerProvider("local-lm-studio", {
+    baseUrl: "http://localhost:1234/v1",
+    apiKey: "lm-studio",
+    api: "openai-completions",
+    models: data.map((m) => ({
+      id: m.id,
+      name: m.id,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    })),
+  });
+}</code></pre>
+
+<p>
+  对于<strong>协议完全不标准</strong>的 API（既不是 OpenAI 也不是 Anthropic 格式），还有 <code>streamSimple</code> 这个终极扩展点——你自己实现流式收发。
+  这是高级主题，需要时再翻官方 <code>docs/custom-provider.md</code> 的 <em>Custom Streaming</em> 章节。
+</p>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. <code>registerProvider</code> 的正确调用是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a"><code>pi.registerProvider("my-llm", { baseUrl: ... })</code> —— 两参数：ID + 配置</label></li>
+      <li><label><input type="radio" name="q1" value="b"><code>pi.registerProvider({ name: "my-llm", baseUrl: ... })</code> —— 一个配置对象</label></li>
+      <li><label><input type="radio" name="q1" value="c"><code>pi.registerProvider("my-llm")</code> 然后另起一行写配置</label></li>
+      <li><label><input type="radio" name="q1" value="d">任意一种都行，Pi 自动识别</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 接 OpenAI 兼容的国产 API（DeepSeek、智谱等），<code>api</code> 字段填什么？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a"><code>"openai-completions"</code></label></li>
+      <li><label><input type="radio" name="q2" value="b"><code>"anthropic-messages"</code></label></li>
+      <li><label><input type="radio" name="q2" value="c"><code>"openai-responses"</code></label></li>
+      <li><label><input type="radio" name="q2" value="d">留空，Pi 自动判断</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. <code>contextWindow</code> 和 <code>maxTokens</code> 的区别？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">前者是输入上限，后者是单次输出上限</label></li>
+      <li><label><input type="radio" name="q3" value="b">前者是单次输出上限，后者是输入上限</label></li>
+      <li><label><input type="radio" name="q3" value="c">两个都是输入上限，只是单位不同</label></li>
+      <li><label><input type="radio" name="q3" value="d">两个完全一样，任填一个即可</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">4. 写 <code>registerProvider("deepseek", { baseUrl: "..." })</code>（不带 models）会发生什么？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q4" value="a">覆盖内置 deepseek 的 baseUrl，模型列表保留</label></li>
+      <li><label><input type="radio" name="q4" value="b">报错：必须提供 models</label></li>
+      <li><label><input type="radio" name="q4" value="c">新增一个名为 deepseek 的 provider，和内置并存</label></li>
+      <li><label><input type="radio" name="q4" value="d">删除内置 deepseek 全部模型</label></li>
+    </ul>
+    <div class="feedback" data-q="4" data-right="a"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方 <code>docs/custom-provider.md</code> 全文，以及 <code>node_modules/@earendil-works/pi-ai/dist/providers/*.js</code>——内置各厂商的真实配置就是最好的参考样本。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "我的 API 返回格式不标准怎么办？"、"思考模型的 <code>thinkingLevelMap</code> 怎么填？"、"Provider 可以和 Tool 放在同一个 Extension 文件吗？"——随时问。
+</aside>
+
+<footer>
+  <p class="prev"><a href="0011-extension-state-and-ui.html">← 第 11 课 · Session 持久化与交互 UI</a></p>
+  <p class="next"><strong>下一节</strong>：<a href="0013-skills-and-prompts.html">第 13 课 · Skills 与 Prompt Templates</a>——教 LLM 做事的配方。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 9 课 · 你的第一个 Extension</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 9 · 动手写扩展</p>
+  <h1>写一个能跑的 Extension</h1>
+  <p class="meta">时长约 8 分钟</p>
+</header>
+
+<p>
+第 8 课把 Extension 的概念讲清了，这一课动手写一个：
+注册一个工具，让 LLM 能在对话中调用你写的函数。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  在写代码之前，先搞清楚 Extension 的基本结构：<code>ExtensionAPI</code> 接口、<code>pi.registerTool</code> 的签名、
+  以及 <code>execute</code> 回调的参数和返回值。然后亲手写一个"随机数生成器"，从建文件到在 Pi 里看到工具生效。
+</aside>
+
+<h2>Extension 的骨架</h2>
+
+<p>
+每个 Extension 都是<strong>一个 TypeScript 文件导出一个函数</strong>，这个函数接收一个 <code>ExtensionAPI</code> 对象，
+通过它注册工具、命令、事件监听等。
+</p>
+
+<pre><code>import type { ExtensionAPI, Tool, ExecutionContext } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "my_tool",
+    description: "Description for the LLM",
+    parameters: { /* JSON Schema 定义参数 */ },
+    execute: async (ctx: ExecutionContext, params: any) => {
+      return {
+        content: [{ type: "text", text: "返回给 LLM 的文本" }],
+      };
+    },
+  });
+}</code></pre>
+
+<p>四个必填字段，逐个说。</p>
+
+<h3><code>name</code></h3>
+
+<p>工具的唯一标识符。LLM 在生成 tool_call 时用它来引用你的函数。
+只用小写字母、数字、下划线，避免空格和特殊字符。</p>
+
+<h3><code>description</code></h3>
+
+<p>给 LLM 看的。写清楚这个工具做什么、什么时候该用、什么时候不该用。
+一句话说不完的，拆成短句，LLM 读得越清楚，调用的越准确。</p>
+
+<h3><code>parameters</code></h3>
+
+<p>标准的 JSON Schema 对象。定义函数接收的参数。
+LLM 会根据 schema 生成调用参数，所以 <code>properties</code> 和 <code>required</code> 写准确很重要。</p>
+
+<h3><code>execute</code></h3>
+
+<p>你的代码逻辑在这里执行。参数是 <code>ExecutionContext</code>（提供 <code>ctx.ui</code>、<code>ctx.log</code> 等），
+第二个参数是 LLM 传过来的参数对象。
+<strong>必须返回 <code>{ content: [{ type: "text", text: "..." }] }</code> 格式</strong>，
+返回的文本会直接喂给 LLM 作为工具调用的结果。</p>
+
+<aside class="note">
+  <span class="label">关于 <code>parameters</code></span>
+  如果不接受任何参数，传 <code>{ type: "object", properties: {} }</code>。
+  每个 property 都可以指定 <code>type</code>（string/number/boolean）、<code>description</code>、
+  <code>enum</code>（可选值）、<code>default</code> 等。
+</aside>
+
+<h2>动手：随机数生成器</h2>
+
+<p>
+建一个文件 <code>~/.pi/agent/extensions/random.ts</code>，写一个 <code>roll_dice</code> 工具——
+给一个最大数 <code>n</code>，返回一个 1 到 n 的随机整数。
+</p>
+
+<pre><code>import type { ExtensionAPI, ExecutionContext } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "roll_dice",
+    description:
+      "Roll a dice and return a random integer between 1 and n (inclusive). " +
+      "Useful when you need a random number.",
+    parameters: {
+      type: "object",
+      properties: {
+        n: {
+          type: "number",
+          description: "Maximum value (inclusive). Must be at least 1.",
+        },
+      },
+      required: ["n"],
+    },
+    execute: async (_ctx: ExecutionContext, params: { n: number }) => {
+      const min = 1;
+      const max = Math.max(min, Math.floor(params.n));
+      const result = Math.floor(Math.random() * (max - min + 1)) + min;
+      return {
+        content: [{ type: "text", text: `Rolled: ${result} (range: ${min}-${max})` }],
+      };
+    },
+  });
+}</code></pre>
+
+<p>
+保存后，打开 Pi：<code>pi</code>，然后试试：<code>帮我掷一个 20 面的骰子</code>。
+Pi 应该调用你的 <code>roll_dice</code> 工具并返回结果。
+</p>
+
+<aside class="note">
+  <span class="label">怎么知道扩展被加载了？</span>
+  启动 Pi 时，它会在终端输出加载了哪些扩展：
+  <code>Loaded 3 extensions:</code> 之类的一行。
+  如果没看到你的扩展，检查文件路径和 TypeScript 语法。
+  用 <code>pi -e ./random.ts</code> 临时加载单个文件调试。
+</aside>
+
+<h2>测试你的 Extension</h2>
+
+<div class="exercise">
+  <h3>动手试试</h3>
+  <ol>
+    <li>把上面的代码保存到 <code>~/.pi/agent/extensions/random.ts</code>。</li>
+    <li>启动 Pi：运行 <code>pi</code>。</li>
+    <li>输入 <code>掷一个 20 面的骰子</code>，看 Pi 是否调用 <code>roll_dice</code>。</li>
+    <li>试试 <code>掷一个 100 面的骰子</code>，确认范围正确。</li>
+    <li>修改代码——把返回格式改成 <code>🎲 ${result}</code>，重启 Pi 再试一次。</li>
+  </ol>
+</div>
+
+<aside class="note">
+  <span class="label">热重载</span>
+  Pi 不会自动检测 Extension 的变化。修改代码后需要退出再启动，或者用 <code>/reset</code> 清空当前会话后重新加载。
+</aside>
+
+<h2>常见的第一个坑</h2>
+
+<p>
+<code>parameters</code> 和 <code>execute</code> 的类型要对齐。
+如果 schema 里 <code>n</code> 是 number，但 execute 里把 <code>params.n</code> 当字符串用，
+LLM 传入的可能是 <code>"20"</code>（字符串）而不是 <code>20</code>（数字），会导致 <code>NaN</code>。
+</p>
+
+<p>
+写一个防御性的小习惯：在 <code>execute</code> 里做类型检查或转换。
+</p>
+
+<pre><code>const n = Number(params.n);
+if (!Number.isInteger(n) || n < 1) {
+  return `Error: n must be a positive integer, got ${params.n}`;
+}</code></pre>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. Extension 函数必须怎样导出？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">使用 <code>export default function</code> 导出</label></li>
+      <li><label><input type="radio" name="q1" value="b">使用 <code>export function</code> 导出</label></li>
+      <li><label><input type="radio" name="q1" value="c">使用 <code>module.exports</code> 导出</label></li>
+      <li><label><input type="radio" name="q1" value="d">不需要导出，文件存在即可</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. <code>registerTool</code> 的 <code>description</code> 是给谁看的？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">给 LLM 看，影响工具调用的准确性</label></li>
+      <li><label><input type="radio" name="q2" value="b">给用户看，显示在终端</label></li>
+      <li><label><input type="radio" name="q2" value="c">给 TypeScript 编译器做类型检查</label></li>
+      <li><label><input type="radio" name="q2" value="d">给 Pi 内核做功能路由</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. 修改 Extension 代码后，怎么做让它生效？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">自动热重载，无需操作</label></li>
+      <li><label><input type="radio" name="q3" value="b">退出 Pi 并重新启动</label></li>
+      <li><label><input type="radio" name="q3" value="c">运行 <code>pi --reload</code></label></li>
+      <li><label><input type="radio" name="q3" value="d">修改后保存即可</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="b"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方 docs/extensions.md 的 <em>registerTool</em> 章节，
+  以及 TypeScript 的 <a href="https://json-schema.org/">JSON Schema</a> 基础，理解 <code>parameters</code> 里的字段怎么写。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  写 Extension 的时候遇到问题了吗？"为什么 LLM 不调用我的工具？"、"parameters 怎么写？"、"execute 里的 ctx 有什么方法？"——随时问。
+</aside>
+
+<footer>
+  <p class="prev"><a href="0008-extension-concepts-modes.html">← 第 8 课 · Extension 概念与四种运行模式</a></p>
+  <p class="next"><strong>下一节</strong>：<a href="0010-commands-and-events.html">第 10 课 · 注册命令与事件钩子</a>——添加 Slash 命令、拦截 Agent 事件。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

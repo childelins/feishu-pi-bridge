@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 6 课 · Slash 命令与 Context Files</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 6 · 使用进阶</p>
+  <h1>Slash 命令与 Context Files</h1>
+  <p class="meta">时长约 6 分钟</p>
+</header>
+
+<p>
+前五课你掌握了 Pi 的核心模型。现在学最常用的两个日常操作：
+<strong>Slash 命令</strong>是 Pi 里的「快捷键」，<strong>Context Files</strong>是给 Pi 下指令的标准方式。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该知道 6 个最常用的 Slash 命令、Context Files 放哪里怎么写，
+  并能在日常对话中自然使用它们。
+</aside>
+
+<h2>Slash 命令是什么？</h2>
+
+<p>
+在输入框里输入 <code>/</code> 开头，Pi 就会把它当成一条命令而不是普通对话。
+</p>
+
+<pre><code>&gt;&gt; /model
+&gt;&gt; /reload
+&gt;&gt; /session</code></pre>
+
+<p>
+Pi 有 18+ 个 Slash 命令，但 <strong>你日常只需要记住 6 个</strong>，其余知道存在就行。
+</p>
+
+<h2>最常用的 6 个 Slash 命令</h2>
+
+<table>
+  <thead>
+    <tr><th>命令</th><th>做什么</th><th>什么时候用</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/model</code></td>
+      <td>切换模型（等价于 <kbd>Ctrl</kbd>+<kbd>L</kbd>）</td>
+      <td>当前模型太慢或不够聪明时</td>
+    </tr>
+    <tr>
+      <td><code>/settings</code></td>
+      <td>修改 thinking 等级、主题、消息投递等</td>
+      <td>想调高 thinking 等级、换主题时</td>
+    </tr>
+    <tr>
+      <td><code>/resume</code></td>
+      <td>浏览和恢复之前的 session</td>
+      <td>想回到之前的工作上下文</td>
+    </tr>
+    <tr>
+      <td><code>/new</code></td>
+      <td>开始一个新 session（清空上下文）</td>
+      <td>切任务了，不想让历史影响新对话</td>
+    </tr>
+    <tr>
+      <td><code>/reload</code></td>
+      <td>重新加载 Extension、Settings、Context Files</td>
+      <td>改了设置或文件后不想重启 Pi</td>
+    </tr>
+    <tr>
+      <td><code>/quit</code></td>
+      <td>退出 Pi（等价于 <code>exit</code>）</td>
+      <td>不解释了</td>
+    </tr>
+  </tbody>
+</table>
+
+<aside class="note">
+  <span class="label">2 个 Session 深度命令</span>
+  <code>/tree</code> — 在会话历史里跳转和分支，同一会话文件内切到之前的任意位置继续。
+  <code>/compact</code> — 手动压缩上下文，把旧消息总结成摘要以腾出空间。
+  这两个稍复杂，但用得多了会知道它们的存在。
+</aside>
+
+<h2>输入技巧</h2>
+
+<p>输入框里还能做这些：</p>
+
+<table>
+  <thead>
+    <tr><th>操作</th><th>效果</th><th>示例</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>@文件名</code></td>
+      <td>模糊搜索文件并附加到消息中</td>
+      <td><code>@package.json 这个依赖了哪些包？</code></td>
+    </tr>
+    <tr>
+      <td><code>!命令</code></td>
+      <td>执行 shell 命令，输出发给 LLM</td>
+      <td><code>!npm run build</code></td>
+    </tr>
+    <tr>
+      <td><code>!!命令</code></td>
+      <td>执行 shell 命令，输出不发给 LLM</td>
+      <td><code>!!pkill -f dev-server</code></td>
+    </tr>
+    <tr>
+      <td><kbd>Shift</kbd>+<kbd>Tab</kbd></td>
+      <td>切换 thinking 等级</td>
+      <td>从 medium 切到 high</td>
+    </tr>
+    <tr>
+      <td><kbd>Ctrl</kbd>+<kbd>O</kbd></td>
+      <td>展开/折叠工具调用输出</td>
+      <td>想看 read 返回了什么内容</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Context Files（AGENTS.md）</h2>
+
+<p>
+Context Files 是 Pi 启动时自动加载的 Markdown 文件，用于告诉 Pi 一个项目的规则和约定。它们<strong>不是</strong>工具，而是注入到系统提示词里的背景知识。
+</p>
+
+<h3>存放位置</h3>
+
+<p>Pi 启动时会按以下顺序查找并加载所有匹配的文件：</p>
+
+<pre><code>1. ~/.pi/agent/AGENTS.md         # 全局指令（所有项目生效）
+2. 从 cwd 往上查找 AGENTS.md     # 项目目录及其父目录
+3. cwd 下的 CLAUDE.md             # 兼容 Claude Code 的配置文件</code></pre>
+
+<p>所有找到的文件内容会合并在一起，追加到系统提示词中。</p>
+
+<h3>写什么</h3>
+
+<pre><code># 项目规则
+
+- 运行 `npm run check` 通过后才能提交
+- 不要修改 `dist/` 目录下的文件
+- 使用 2 个空格的缩进
+- 测试框架使用 Vitest</code></pre>
+
+<aside class="note">
+  <span class="label">修改后要 /reload</span>
+  修改了 AGENTS.md 后，Pi 不会自动重新加载。运行 <code>/reload</code> 让它重新读取，或者重启 Pi。
+</aside>
+
+<h2>扩展模式也能注册命令</h2>
+
+<p>
+你现在理解 Slash 命令是 Pi 内置的交互方式，但这为后面学习 Extension 埋了一个关联：
+Extension 可以通过 <code>pi.registerCommand()</code> 添加自定义 Slash 命令。
+你后面写飞书 Extension 时，可以用它注册一个 <code>/send-to-feishu</code> 命令。
+</p>
+
+<h2>练习</h2>
+
+<div class="exercise">
+  <h3>写一个项目级的 AGENTS.md</h3>
+  <ol>
+    <li>在项目根目录创建 <code>AGENTS.md</code></li>
+    <li>写上 3 条你希望 Pi 遵守的规则</li>
+    <li>启动 Pi（或 <code>/reload</code>），发一条消息看看它是否遵守</li>
+    <li>再试试 <code>/model</code> 切换一下模型</li>
+  </ol>
+  <p style="margin-top:0.75rem">如果你已经建立了 AGENTS.md，尝试修改它，用 <code>/reload</code> 重新加载，再对比修改前后的表现。</p>
+</div>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方 docs/usage.md 中的 Context Files 和 Slash Commands 部分。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "AGENTS.md 和 SYSTEM.md 有什么区别？"、"Slash 命令冲突了怎么办？"——随时问。
+</aside>
+
+<footer>
+  <p class="next"><strong>下一节</strong>：<a href="0007-session-management.html">第 7 课 · Session 管理与分支</a>——学会用 /tree 和 /fork 在会话历史里自由跳转。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

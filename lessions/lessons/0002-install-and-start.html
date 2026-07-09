@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 课 · 安装与启动 Pi</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 2 · 入门</p>
+  <h1>安装 Pi，并完成你的第一次启动</h1>
+  <p class="meta">时长约 5 分钟</p>
+</header>
+
+<p>
+上一课我们建立了心智模型。
+现在要把 Pi 装到你的电脑上——不装，什么都做不了。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能独立完成：安装 → 启动 → 退出 Pi，并理解每个步骤在干什么。
+</aside>
+
+<h2>安装</h2>
+
+<p>
+Pi 是一个 npm 包，安装只需要一条命令：
+</p>
+
+<pre><code>npm install -g @earendil-works/pi-coding-agent</code></pre>
+
+<p>
+<code>-g</code> 表示全局安装——装完后你在任何目录都能直接敲 <code>pi</code>。
+</p>
+
+<div class="callout">
+  <p><strong>前提</strong>：你需要先装好 Node.js（推荐 18 或更高）。检查：<code>node --version</code>。</p>
+</div>
+
+<h2>启动</h2>
+
+<p>
+安装完成后，在任何目录下运行：
+</p>
+
+<pre><code>pi</code></pre>
+
+<p>
+这就是启动命令。第一次启动时，Pi 会初始化一些目录结构，
+然后进入交互模式——你在终端里看到一个 <code>>></code> 提示符，
+可以在里面输入自然语言指令。
+</p>
+
+<pre class="ascii">$ pi
+✓ loaded extension: hello.ts
+pi&gt;&gt; 你好，你是谁？</pre>
+
+<aside class="note">
+  <span class="label">扩展加载顺序</span>
+  首次启动时 Pi 会扫描：<code>.pi/extensions/</code>（当前项目）→ <code>~/.pi/agent/extensions/</code>（全局）→ npm 包。如果某个目录不存在，跳过，不报错。
+</aside>
+
+<h2>退出</h2>
+
+<p>
+结束会话，回到 shell：
+</p>
+
+<pre><code>exit</code></pre>
+
+<p>
+或者按 <kbd>Ctrl</kbd>+<kbd>C</kbd> 两次。和大多数 CLI 一样，没有什么特殊的退出快捷键。
+</p>
+
+<h2>完整流程一览</h2>
+
+<table>
+  <thead>
+    <tr><th>步骤</th><th>命令</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>安装</td>
+      <td><code>npm install -g @earendil-works/pi-coding-agent</code></td>
+      <td>全局安装，一次就行</td>
+    </tr>
+    <tr>
+      <td>启动</td>
+      <td><code>pi</code></td>
+      <td>进入交互模式</td>
+    </tr>
+    <tr>
+      <td>退出</td>
+      <td><code>exit</code> 或 <kbd>Ctrl</kbd>+<kbd>C</kbd>×2</td>
+      <td>回到 shell</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>练习</h2>
+
+<div class="exercise">
+  <h3>完成你的第一次 Pi 对话</h3>
+  <ol>
+    <li>确认安装：<code>pi --version</code>（输出版本号表示装好了）</li>
+    <li>启动：<code>pi</code></li>
+    <li>输入一句话：<code>现在几点了？</code></li>
+    <li>观察它的回复</li>
+    <li>退出：<code>exit</code></li>
+  </ol>
+  <p style="margin-top:0.75rem;margin-bottom:0">这就是你人生第一个 Pi 会话。</p>
+</div>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. 安装 Pi 的正确命令是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a"><code>npm install -g pi</code></label></li>
+      <li><label><input type="radio" name="q1" value="b"><code>npm install -g @earendil-works/pi-coding-agent</code></label></li>
+      <li><label><input type="radio" name="q1" value="c"><code>pip install pi</code></label></li>
+      <li><label><input type="radio" name="q1" value="d"><code>brew install pi</code></label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 启动 Pi 的命令是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a"><code>start pi</code></label></li>
+      <li><label><input type="radio" name="q2" value="b"><code>run pi</code></label></li>
+      <li><label><input type="radio" name="q2" value="c"><code>pi start</code></label></li>
+      <li><label><input type="radio" name="q2" value="d"><code>pi</code></label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="d"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. 退出 Pi 的正确方式是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a"><code>exit</code></label></li>
+      <li><label><input type="radio" name="q3" value="b"><kbd>Ctrl</kbd>+<kbd>C</kbd> 两次</label></li>
+      <li><label><input type="radio" name="q3" value="c"><code>quit</code></label></li>
+      <li><label><input type="radio" name="q3" value="d">以上都行</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="d"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  Pi 官方 README：<a href="https://github.com/earendil-works/pi" target="_blank">github.com/earendil-works/pi</a>。读完介绍段落后直接看 Installation 部分，确认本地安装成功。
+</aside>
+
+<aside class="note">
+  <span class="label">遇到问题？</span>
+  <code>pi</code> 命令找不到？检查 <code>npm install -g</code> 的全局 bin 目录是否在 PATH 里：<code>npm bin -g</code>。把那个目录加到 PATH 即可。
+</aside>
+
+<footer>
+  <p class="next"><strong>下一节</strong>：<a href="0003-session-lifecycle.html">第 3 课 · Pi 的会话生命周期</a>——理解从敲下 pi 到 exit 退出的完整流程。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

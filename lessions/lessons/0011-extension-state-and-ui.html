@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 11 课 · Session 持久化与交互 UI</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 11 · Extension 再进阶</p>
+  <h1>保存 Extension 状态 &amp; 弹出交互 UI</h1>
+  <p class="meta">时长约 8 分钟</p>
+</header>
+
+<p>
+第 10 课学了注册命令和事件钩子。现在还有两件事让你的 Extension 更完整：
+<strong>持久化</strong>（把数据存下来，跨 Session 不丢）和
+<strong>交互 UI</strong>（向用户弹确认框、输入框）。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能：用 <code>pi.appendEntry</code> 把自定义数据写入 Session 文件；
+  在 <code>execute</code> 中用 <code>ctx.ui.confirm</code> 和 <code>ctx.ui.input</code> 弹出交互框；
+  并判断当前运行模式（交互 vs 非交互）以优雅降级。
+</aside>
+
+<h2><code>pi.appendEntry</code>——持久化你的数据</h2>
+
+<p>
+默认情况下 Extension 是"无状态"的——每次启动 Pi，扩展的变量都会重置。
+如果你想跨 Session 保留数据（比如计数器、配置、历史记录），用 <code>pi.appendEntry</code>。
+</p>
+
+<pre><code>export default function (pi: ExtensionAPI) {
+  // 写入一条自定义条目到 session 文件
+  pi.appendEntry("counter", { value: 42 });
+}</code></pre>
+
+<p>写进去的数据存储在 Session JSONL 文件中，重启 Pi 后可以通过 <code>pi.getEntries</code> 读取出来：</p>
+
+<pre><code>const entries = pi.getEntries("counter");
+entries.forEach(e => console.log(e.data.value)); // 42</code></pre>
+
+<aside class="note">
+  <span class="label">存储在哪里？</span>
+  <code>appendEntry</code> 的数据写入到当前 Session 的 JSONL 文件（<code>~/.pi/agent/sessions/...jsonl</code>）。
+  它是持久化的但<strong>绑定在 Session 上</strong>——同一个项目的不同 Session 不会共享这些数据。
+  如果需要在扩展之间共享全局数据，可以用文件系统自己存（比如 <code>~/.pi/agent/extensions-data/</code>）。
+</aside>
+
+<h3>动手：计数器</h3>
+
+<p>写一个带 <code>/count</code> 命令的 Extension，每次调用数字加 1，并记住总数：</p>
+
+<pre><code>import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.registerCommand({
+    name: "count",
+    description: "Add one and return the current count. Stored across sessions.",
+    execute: async (_ctx, args: string) => {
+      const entries = pi.getEntries("counter");
+      // 从已有的记录中读取最后一个值
+      const lastVal = entries.length > 0
+        ? entries[entries.length - 1].data.value
+        : 0;
+      const newVal = lastVal + 1;
+      pi.appendEntry("counter", { value: newVal });
+      return `Count: ${newVal}`;
+    },
+  });
+}</code></pre>
+
+<div class="exercise">
+  <h3>动手试试</h3>
+  <ol>
+    <li>把代码保存到 <code>~/.pi/agent/extensions/counter.ts</code>。</li>
+    <li>重启 Pi，输入 <code>/count</code> 几次，确认数字递增。</li>
+    <li>退出 Pi 重新启动，输入 <code>/count</code>，确认数字从上一次的值继续。</li>
+  </ol>
+</div>
+
+<h2><code>ctx.ui</code>——给用户弹窗</h2>
+
+<p>
+在 <code>execute</code> 的回调中，<code>ExecutionContext</code> 提供了 <code>ctx.ui</code> 对象，
+可以弹出确认框和输入框。
+</p>
+
+<table>
+  <thead>
+    <tr><th>方法</th><th>效果</th><th>返回值</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ctx.ui.confirm(&quot;确认执行？&quot;)</code></td>
+      <td>弹出是/否确认框</td>
+      <td><code>Promise&lt;boolean&gt;</code></td>
+    </tr>
+    <tr>
+      <td><code>ctx.ui.input(&quot;输入名字：&quot;)</code></td>
+      <td>弹出一个文本输入框</td>
+      <td><code>Promise&lt;string&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>例子：带确认的删除</h3>
+
+<pre><code>pi.registerTool({
+  name: "delete_file",
+  description: "Delete a file with confirmation",
+  parameters: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "File path to delete" },
+    },
+    required: ["path"],
+  },
+  execute: async (ctx, params: { path: string }) => {
+    const ok = await ctx.ui.confirm(`确定要删除 ${params.path} 吗？`);
+    if (!ok) return { content: [{ type: "text", text: "已取消" }] };
+    // 执行删除逻辑...
+    return { content: [{ type: "text", text: `已删除 ${params.path}` }] };
+  },
+});</code></pre>
+
+<h3>例子：交互式配置</h3>
+
+<pre><code>pi.registerCommand({
+  name: "setup",
+  description: "Interactive setup",
+  execute: async (ctx, _args: string) => {
+    const name = await ctx.ui.input("你的名字：");
+    const ok = await ctx.ui.confirm(`名字是 ${name}，确认？`);
+    if (!ok) return "已取消";
+    pi.appendEntry("config", { name });
+    return `已保存: ${name}`;
+  },
+});</code></pre>
+
+<aside class="note">
+  <span class="label">ctx 从哪里来</span>
+  <code>registerTool</code> 的 <code>execute</code> 第一个参数就是 <code>ExecutionContext</code>，
+  <code>registerCommand</code> 的 <code>execute</code> 也一样。在第 9 课里我们把它命名为 <code>_ctx</code> 没使用。
+</aside>
+
+<h2>模式感知：交互 vs 非交互</h2>
+
+<p>
+<code>ctx.ui</code> 在非交互模式下不可用（比如 <code>pi -p "..."</code> 或 <code>--mode json</code>）。
+如果不做判断就直接调用，Extension 会抛错或静默失败。
+</p>
+
+<p>
+用 <code>pi.mode</code> 判断当前运行模式：
+</p>
+
+<pre><code>export default function (pi: ExtensionAPI) {
+  pi.registerCommand({
+    name: "greet",
+    description: "Say hello",
+    execute: async (ctx, args: string) => {
+      if (pi.mode === "interactive") {
+        const name = await ctx.ui.input("你的名字：");
+        return `你好，${name}！`;
+      }
+      // 非交互模式下直接使用参数
+      const name = args.trim() || "世界";
+      return `你好，${name}！`;
+    },
+  });
+}</code></pre>
+
+<p>好的习惯是：交互模式用 UI 获取输入，非交互模式回退到命令行参数或默认值。</p>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. pi.appendEntry 写入的数据存在哪里？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">当前 Session 的 JSONL 文件中</label></li>
+      <li><label><input type="radio" name="q1" value="b">一个全局共享的 SQLite 数据库</label></li>
+      <li><label><input type="radio" name="q1" value="c">只在内存中，重启后丢失</label></li>
+      <li><label><input type="radio" name="q1" value="d">扩展文件自身的代码里</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. ctx.ui.confirm() 在哪种模式下会失败？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">非交互模式（pi -p 等）</label></li>
+      <li><label><input type="radio" name="q2" value="b">交互模式</label></li>
+      <li><label><input type="radio" name="q2" value="c">所有模式都可用</label></li>
+      <li><label><input type="radio" name="q2" value="d">只有一次性模式</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. 怎么判断当前 Extension 跑在什么模式下？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">检查 <code>pi.mode</code> 属性</label></li>
+      <li><label><input type="radio" name="q3" value="b">检查 <code>process.argv</code> 参数</label></li>
+      <li><label><input type="radio" name="q3" value="c">捕获 <code>ctx.ui</code> 的异常</label></li>
+      <li><label><input type="radio" name="q3" value="d">这三种方法都可以</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="a"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方 <code>docs/extensions.md</code> 的 <em>Entry</em> 和 <em>UI</em> 章节。<code>pi.getEntries</code> 的 API 签名见同一个文档。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "appendEntry 可以存储什么类型的数据？"、"getEntries 能跨 Session 读取吗？"、"非交互模式下的优雅降级有什么最佳实践？"——随时问。
+</aside>
+
+<footer>
+  <p class="prev"><a href="0010-commands-and-events.html">← 第 10 课 · 注册命令与事件钩子</a></p>
+  <p class="next"><strong>下一节</strong>：<a href="0012-custom-provider.html">第 12 课 · 自定义 LLM Provider</a>——接入你自己的模型。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

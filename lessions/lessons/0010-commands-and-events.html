@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 10 课 · 注册命令与事件钩子</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 10 · Extension 进阶</p>
+  <h1>注册 Slash 命令与拦截事件</h1>
+  <p class="meta">时长约 8 分钟</p>
+</header>
+
+<p>
+第 9 课你学会了用 <code>registerTool</code> 让 LLM 调用你的函数。
+但 Extension 的能力不止于此——你还可以<strong>注册 Slash 命令</strong>让用户主动触发功能，
+以及<strong>拦截事件</strong>在 LLM 调用工具前后插入自定义逻辑。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能：用 <code>pi.registerCommand</code> 添加一个 <code>/mycommand</code>；
+  用 <code>pi.on("tool_call", ...)</code> 在工具执行前做校验或日志；
+  并理解两种方式各自的使用场景。
+</aside>
+
+<h2>回顾：四种注册方式</h2>
+
+<p>ExtensionAPI 提供了四类注册方法，覆盖 LLM 和用户的交互入口：</p>
+
+<table>
+  <thead>
+    <tr><th>方法</th><th>影响对象</th><th>触发方</th><th>第 9 课学过</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>pi.registerTool</code></td>
+      <td>LLM 的工具列表</td>
+      <td>LLM 自动调用</td>
+      <td>是</td>
+    </tr>
+    <tr>
+      <td><code>pi.registerCommand</code></td>
+      <td>Slash 命令列表</td>
+      <td>用户输入 <code>/xxx</code></td>
+      <td>否</td>
+    </tr>
+    <tr>
+      <td><code>pi.on(&hellip;)</code></td>
+      <td>Agent 生命周期事件</td>
+      <td>事件触发时自动回调</td>
+      <td>否</td>
+    </tr>
+    <tr>
+      <td><code>pi.appendEntry</code></td>
+      <td>Session 持久化</td>
+      <td>主动调用写入</td>
+      <td>否</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><code>registerTool</code> 学会了，剩下三种在第 10–12 课逐个解锁。这一课学 <code>registerCommand</code> 和 <code>pi.on</code>。</p>
+
+<h2><code>pi.registerCommand</code>——让用户主动触发</h2>
+
+<p>工具由 LLM 决定什么时候调用，但<strong>命令由用户决定什么时候执行</strong>。用户在对话中输入 <code>/命令名</code>，Pi 立即执行你注册的处理函数。</p>
+
+<pre><code>import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.registerCommand({
+    name: "status",
+    description: "Show current session stats",
+    execute: async (ctx) => {
+      const msgs = await ctx.getMessageCount();
+      return `当前对话有 ${msgs} 条消息。`;
+    },
+  });
+}</code></pre>
+
+<p>保存后重启 Pi，输入 <code>/status</code> 即可看到输出。</p>
+
+<aside class="note">
+  <span class="label">命令 vs 工具</span>
+  命令的 <code>execute</code> 只接收 <code>ExecutionContext</code>，没有参数对象——参数从命令文本中解析。
+  命令处理完直接输出文本，不经过 LLM。
+</aside>
+
+<h3>命令参数</h3>
+
+<p>命令可以带参数，Pi 会把命令行的剩余部分作为字符串传入：</p>
+
+<pre><code>pi.registerCommand({
+  name: "echo",
+  description: "Repeat what you type",
+  execute: async (ctx, args: string) => {
+    if (!args.trim()) return "说点什么？";
+    return `你说了: ${args}`;
+  },
+});</code></pre>
+
+<p>在 Pi 中输入 <code>/echo 你好世界</code>，返回 <code>你说了: 你好世界</code>。</p>
+
+<h3>动手：氛围切换器</h3>
+
+<p>把第 9 课的 random.ts 扩展一下，加一个 <code>/roll</code> 命令，让用户直接掷骰子而不用等 LLM：</p>
+
+<pre><code>import type { ExtensionAPI, ExecutionContext } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  // 工具方式：LLM 调用
+  pi.registerTool({
+    name: "roll_dice",
+    description: "Roll a dice, returning an integer between 1 and n",
+    parameters: {
+      type: "object",
+      properties: {
+        n: { type: "number", description: "Max value (>=1)" },
+      },
+      required: ["n"],
+    },
+    execute: async (_ctx, params) => {
+      const n = Number(params.n);
+      const val = Math.floor(Math.random() * n) + 1;
+      return { content: [{ type: "text", text: `${val}` }] };
+    },
+  });
+
+  // 命令方式：用户主动触发
+  pi.registerCommand({
+    name: "roll",
+    description: "Roll a dice. Usage: /roll &lt;max&gt;",
+    execute: async (_ctx, args: string) => {
+      const n = parseInt(args.trim(), 10);
+      if (isNaN(n) || n < 1) return "用法: /roll &lt;最大数字&gt;";
+      const val = Math.floor(Math.random() * n) + 1;
+      return `${val}`;
+    },
+  });
+}</code></pre>
+
+<div class="exercise">
+  <h3>动手试试</h3>
+  <ol>
+    <li>把上面代码保存到 <code>~/.pi/agent/extensions/random.ts</code>（覆盖旧文件）。</li>
+    <li>重启 Pi。</li>
+    <li>输入 <code>/roll 20</code>，确认直接返回数字。</li>
+    <li>再试试 <code>帮我掷一个 6 面的骰子</code>，确认 <code>roll_dice</code> 工具也正常。</li>
+  </ol>
+</div>
+
+<h2><code>pi.on()</code>——拦截 Agent 事件</h2>
+
+<p>Extension 不仅可以注册新能力，还可以<strong>监听和拦截 Agent 的运行事件</strong>。
+最常见的两个事件是 <code>tool_call</code>（工具即将执行）和 <code>tool_result</code>（工具已返回）。</p>
+
+<table>
+  <thead>
+    <tr><th>事件名</th><th>触发时机</th><th>可以</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>tool_call</code></td>
+      <td>LLM 请求调用工具时</td>
+      <td>校验参数、记录日志、修改参数、或阻止执行</td>
+    </tr>
+    <tr>
+      <td><code>tool_result</code></td>
+      <td>工具执行完成时</td>
+      <td>修改返回值、记录耗时</td>
+    </tr>
+    <tr>
+      <td><code>response</code></td>
+      <td>LLM 生成回复时</td>
+      <td>在最终回复中加入额外信息</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>例子：记录所有工具调用</h3>
+
+<pre><code>export default function (pi: ExtensionAPI) {
+  pi.on("tool_call", (ctx, toolCall) => {
+    ctx.log(`[audit] tool=${toolCall.name} args=${JSON.stringify(toolCall.args)}`);
+  });
+  pi.on("tool_result", (ctx, toolCall, result) => {
+    ctx.log(`[audit] done=${toolCall.name} elapsed=${result.elapsed}ms`);
+  });
+}</code></pre>
+
+<h3>拦截和阻止</h3>
+
+<p>在 <code>tool_call</code> 事件中，如果工具参数不合理，可以<strong>阻止它执行</strong>：</p>
+
+<pre><code>pi.on("tool_call", (ctx, toolCall) => {
+  if (toolCall.name === "bash" && /rm\s+-rf/.test(toolCall.args.command)) {
+    ctx.ui.confirm("检测到危险命令，确认执行？").then(ok => {
+      if (!ok) throw new Error("用户取消了危险操作");
+    });
+  }
+});</code></pre>
+
+<aside class="note">
+  <span class="label">设计意图</span>
+  事件钩子的价值不是"控制用户"——而是在工具调用流中插入审计、节流、权限检查等横切关注点。
+  比如：记录所有 <code>write</code> 调用的文件路径，或者阻止对 <code>/etc</code> 的写入。
+</aside>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. registerCommand 和 registerTool 的核心区别是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">命令由用户手动触发，工具由 LLM 自动调用</label></li>
+      <li><label><input type="radio" name="q1" value="b">命令用 TypeScript，工具用 JavaScript</label></li>
+      <li><label><input type="radio" name="q1" value="c">命令支持参数，工具不支持</label></li>
+      <li><label><input type="radio" name="q1" value="d">命令需要重启，工具支持热重载</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 想在每个工具执行前做日志，应该监听什么事件？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a"><code>tool_result</code></label></li>
+      <li><label><input type="radio" name="q2" value="b"><code>tool_call</code></label></li>
+      <li><label><input type="radio" name="q2" value="c"><code>response</code></label></li>
+      <li><label><input type="radio" name="q2" value="d"><code>session_start</code></label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. /roll 20 中的 20 以什么形式传给 execute？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">作为 <code>args</code> 字符串传入</label></li>
+      <li><label><input type="radio" name="q3" value="b">作为 <code>params.n</code> 对象传入</label></li>
+      <li><label><input type="radio" name="q3" value="c">不传参，需要手动解析路径</label></li>
+      <li><label><input type="radio" name="q3" value="d">作为全局变量</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="a"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方 <code>docs/extensions.md</code> 的 <em>Commands</em> 和 <em>Events</em> 章节。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "命令的工具什么时候用命令而不是工具？"、"事件监听可以做异步操作吗？"、"<code>pi.on</code> 可以移除吗？"——随时问。
+</aside>
+
+<footer>
+  <p class="prev"><a href="0009-first-extension.html">← 第 9 课 · 你的第一个 Extension</a></p>
+  <p class="next"><strong>下一节</strong>：<a href="0011-extension-state-and-ui.html">第 11 课 · Session 持久化与交互 UI</a>——保存状态、弹窗、输入框。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

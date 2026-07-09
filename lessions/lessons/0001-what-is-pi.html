@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 课 · Pi 是什么</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin: 1.25rem 0; }
+  .compare .col { background: var(--code-bg); padding: 0.9rem 1rem; border-radius: 3px; }
+  .compare .col h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+  .compare .col pre { background: transparent; padding: 0; margin: 0.5rem 0 0; font-size: 0.8rem; }
+  .compare .col p { margin: 0; font-size: 0.88rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 1 · Pi 入门</p>
+  <h1>Pi 是什么，以及为什么它是一个值得你花时间的工具</h1>
+  <p class="meta">时长约 6 分钟</p>
+</header>
+
+<p>
+在你写任何代码之前，先搞清楚 <strong>Pi 到底在解决什么问题</strong>。
+这个问题的答案，决定了你后面每一行 Extension 代码该往哪里放。
+</p>
+
+<aside class="note">
+  <span class="label">这门课的目标</span>
+  在这一课结束时，你应该能用自己的话回答：Pi 是什么、它和其他 AI 编程工具有什么不同、以及你为什么需要它。
+</aside>
+
+<h2>一句话定义</h2>
+
+<p>
+Pi 是一个 <strong>终端里的 AI 编程助手</strong>。它把语言模型的能力直接嵌入到你的命令行工作流里，让你用自然语言和 shell 对话来写代码、改文件、跑命令。
+</p>
+
+<p>
+但和 Claude Code、Cursor、GitHub Copilot 这些产品相比，Pi 的设计哲学非常不同——这一点是你后面组装它时要时刻记住的。
+</p>
+
+<h2>两种截然不同的产品哲学</h2>
+
+<p>
+大多数 AI 编程工具走的是 <strong>"all-in-one"</strong> 路线：
+内置一切功能，开箱即用，你只需要用就行。
+</p>
+
+<p>
+Pi 走的是 <strong>"minimal core + extensible"</strong> 路线：
+</p>
+
+<div class="compare">
+  <div class="col">
+    <h3>All-in-One（如 Cursor）</h3>
+    <pre class="ascii">内置功能
+├── 补全
+├── Chat
+├── 终端 Agent
+├── 数据库插件
+├── 云端同步
+└── 内置提示词
+   ← 你选择使用
+      ← 你无法替换</pre>
+    <p>功能丰富，但定制度受限。</p>
+  </div>
+  <div class="col">
+    <h3>Minimal Core（如 Pi）</h3>
+    <pre class="ascii">极简内核
+├── read
+├── write
+├── edit
+└── bash
+   ← 这些是固定的
+      ← 其它都靠你注入</pre>
+    <p>四件工具起步，其它一切靠扩展。你可以塑形 Pi，而不是适应它。</p>
+  </div>
+</div>
+
+<div class="callout">
+  <p>
+  Pi 作者 Mario Zechner 在介绍中说过：<strong>"We build the minimum viable product and let you extend it."</strong>（我们做最精简的内核，由你来扩展它。）
+  </p>
+</div>
+
+<p>
+这就是为什么你的 Mission 里写的是 <em>"组装"</em> 一个 Coding Agent——
+你不是在使用一个完成品，而是在用乐高积木搭一个属于你自己的东西。
+</p>
+
+<h2>Pi 现在能做什么？</h2>
+
+<p>
+不装任何扩展，Pi 开箱就能做这些：
+</p>
+
+<ul>
+  <li><strong>读文件</strong>——`read(path)`，读取任意文件内容</li>
+  <li><strong>写文件</strong>——`write(path, content)`，创建或覆盖文件</li>
+  <li><strong>改文件</strong>——`edit(path, old, new)`，精准替换某段内容</li>
+  <li><strong>跑命令</strong>——`bash(command)`，在 shell 里执行任意命令</li>
+</ul>
+
+<p>
+这就是 <strong>全部</strong>。没有内置的 Git 工具，没有内置的搜索，没有内置的飞书通知，没有内置的数据库查询。一切都需要你通过扩展来添加。
+</p>
+
+<aside class="note">
+  <span class="label">设计上的取舍</span>
+  这种极简不是偷懒，而是一种刻意。少意味着你知道每一个能力来自哪里，少意味着你可以完全控制它的行为，少意味着它不会在你不想的时候偷偷做什么。
+</aside>
+
+<h2>你接下来要做什么？</h2>
+
+<p>
+你的目标很明确，拆成三个具体的东西：
+</p>
+
+<ol>
+  <li><strong>Extension</strong>——写一个 TypeScript 模块，接入飞书 API，让 Pi 能在飞书里发通知。</li>
+  <li><strong>自定义 Provider</strong>——把私有 LLM 网关接进来，切换不同模型做不同任务。</li>
+  <li><strong>自定义 Skill</strong>——把常用的业务审查流程封装成 Skill，让 Pi 自动学会。</li>
+</ol>
+
+<p>
+这三件事本质上都是同一件事的不同侧面：<strong>给 Pi 注册新的能力</strong>。学会了其中一种，另外两种就水到渠成。
+</p>
+
+<p>
+第一课不急着碰代码。先建立心智模型就够了。接下来的课我们会一步一步写。
+</p>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. Pi 的设计哲学是什么？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">内置越多功能越好</label></li>
+      <li><label><input type="radio" name="q1" value="b">极简内核 + 用户扩展</label></li>
+      <li><label><input type="radio" name="q1" value="c">专注桌面端 GUI 界面</label></li>
+      <li><label><input type="radio" name="q1" value="d">依赖云端 API 不可离线</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 不装扩展，Pi 内置的工具不包括？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">read</label></li>
+      <li><label><input type="radio" name="q2" value="b">write</label></li>
+      <li><label><input type="radio" name="q2" value="c">git</label></li>
+      <li><label><input type="radio" name="q2" value="d">bash</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="c"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. 把 Pi 的能力比作乐高，下面的说法正确的是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">只能按说明书拼</label></li>
+      <li><label><input type="radio" name="q3" value="b">不能改内核形状</label></li>
+      <li><label><input type="radio" name="q3" value="c">你可以决定它长什么样</label></li>
+      <li><label><input type="radio" name="q3" value="d">乐高块是内置不可替换的</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="c"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  Pi 官方 README：<a href="https://github.com/earendil-works/pi" target="_blank">github.com/earendil-works/pi</a>。先读最上面的介绍段落，感受一下作者想解决问题的方向。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  任何时候觉得「我还是不太懂 Pi 和别的工具的区别」，或者「扩展到底是什么」——直接问。不用攒问题。
+</aside>
+
+<footer>
+  <p class="next"><strong>下一课</strong>：<a href="0002-install-and-start.html">第 2 课 · 安装与启动 Pi</a>——把 Pi 装到你电脑上，完成第一次对话。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

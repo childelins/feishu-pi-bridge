@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 14 课 · Pi Package 与扩展加载机制</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 14 · 加载与分发</p>
+  <h1>扩展加载机制 &amp; Pi Package 分发</h1>
+  <p class="meta">时长约 8 分钟</p>
+</header>
+
+<p>
+前面 13 课你写了 Extension、注册了 Provider、编了 Skill。
+现在搞清楚——<strong>这些文件到底从哪加载，优先级是什么，怎么把扩展分享给别人</strong>。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能：说出三种扩展加载路径的加载顺序和覆盖关系；
+  用 <code>pi install</code> 安装一个别人写好的扩展；
+  知道怎么把一个扩展打包成可共享的 Pi Package。
+</aside>
+
+<h2>三种加载路径</h2>
+
+<p>Pi 在启动时会扫描以下目录中的扩展文件：</p>
+
+<table>
+  <thead>
+    <tr><th>路径</th><th>范围</th><th>类型</th><th>优先级</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>~/.pi/agent/extensions/</code></td>
+      <td>全局——所有项目都生效</td>
+      <td><code>.ts</code> / <code>.js</code> / <code>.md</code></td>
+      <td>最高</td>
+    </tr>
+    <tr>
+      <td><code>.pi/extensions/</code></td>
+      <td>项目本地——仅当前项目生效</td>
+      <td><code>.ts</code> / <code>.js</code></td>
+      <td>中</td>
+    </tr>
+    <tr>
+      <td>npm 包（<code>pi install</code> 安装）</td>
+      <td>全局/项目</td>
+      <td>打包的扩展包</td>
+      <td>最低</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>覆盖关系</strong>：同一名字的扩展，本地路径会覆盖全局路径，全局路径会覆盖 npm 包。
+这就是为什么你可以用全局 Extension 来"劫持"某个内置功能或第三方扩展。</p>
+
+<aside class="note">
+  <span class="label">加载顺序</span>
+  Pi 的加载顺序是：内置 → npm 包 → 项目本地 → 全局。
+  后加载的扩展会覆盖先加载的同名扩展。
+</aside>
+
+<h2>扩展文件命名与发现</h2>
+
+<p>
+在 <code>~/.pi/agent/extensions/</code> 或 <code>.pi/extensions/</code> 中，Pi 会：
+</p>
+
+<ul>
+  <li>加载所有 <code>*.ts</code> 和 <code>*.js</code> 文件（自动转换 TypeScript）</li>
+  <li>加载所有 <code>*.md</code> 文件作为 Skill（如果文件匹配 Skill 格式）</li>
+  <li>跳过以 <code>_</code> 或 <code>.</code> 开头的文件（隐藏文件或私用文件）</li>
+  <li>如果扩展文件以 <code>provider-*</code> 开头，自动识别为 Provider Extension</li>
+  <li>如果扩展文件名是 <code>skills.md</code>，会作为技能文档加载（与 <code>SKILL.md</code> 类似）</li>
+</ul>
+
+<h3>命名约定</h3>
+
+<p>虽然没有强制要求，但建议：</p>
+
+<ul>
+  <li>Provider 扩展：<code>provider-deepseek.ts</code>、<code>provider-ollama.ts</code></li>
+  <li>工具/命令扩展：<code>feishu.ts</code>、<code>git-helper.ts</code></li>
+  <li>Skill：<code>python-style.md</code>、<code>code-review.md</code></li>
+</ul>
+
+<h2>扩展文件结构</h2>
+
+<p>一个完整的 Extension 文件可以是：</p>
+
+<pre><code>// ~/.pi/agent/extensions/feishu.ts
+import type { ExtensionAPI, ExecutionContext } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  // 注册工具
+  pi.registerTool({
+    name: "feishu_send",
+    description: "Send a message to Feishu group",
+    parameters: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "Message content" },
+      },
+      required: ["message"],
+    },
+    execute: async (_ctx, params: { message: string }) => {
+      // 调用飞书 API 逻辑
+      return { content: [{ type: "text", text: "Sent." }] };
+    },
+  });
+
+  // 注册命令
+  pi.registerCommand({
+    name: "feishu-status",
+    description: "Check Feishu bot status",
+    execute: async (_ctx) => {
+      return "Feishu bot is online.";
+    },
+  });
+}</code></pre>
+
+<p>
+注意：扩展名就是它在 Pi 中的"身份标识"。
+如果你需要更新扩展，只需要修改同名文件；
+如果你想要"禁用"某个扩展，把文件重命名（比如加 <code>.disabled</code> 后缀）即可。
+</p>
+
+<aside class="note">
+  <span class="label">热重载 vs 重启</span>
+  Extension 加载后，后续修改<strong>不会</strong>自动生效，需要退出 Pi 重新启动。
+  Skill 文件修改后，用 <code>/reset</code> 清空上下文即可生效（因为 Skill 是注入到系统提示词中的）。
+</aside>
+
+<h2>用 <code>pi install</code> 安装扩展包</h2>
+
+<p>
+除了手写扩展文件，Pi 还支持通过 <code>pi install</code> 安装别人分享好的扩展包。
+这些包以 npm 包的形式存在，通过 <code>pi install &lt;package-name&gt;</code> 安装。
+</p>
+
+<pre><code># 安装一个扩展包
+pi install pi-skill-git-commit
+
+# 安装后查看已安装的扩展
+pi list
+
+# 卸载
+pi uninstall pi-skill-git-commit
+</code></pre>
+
+<p>
+安装后，Pi 会自动：
+</p>
+
+<ul>
+  <li>在 <code>~/.pi/agent/</code> 下查找该包提供的扩展文件并加载</li>
+  <li>检查是否有 Skill 文件（<code>SKILL.md</code> 或 <code>*.md</code>）并注入系统提示词</li>
+  <li>如果发现是 Provider 扩展，注册到模型列表</li>
+</ul>
+
+<aside class="note">
+  <span class="label">包名约定</span>
+  官方扩展包通常以 <code>@pi/</code> 或 <code>pi-</code> 开头，但第三方包没有强制要求。
+  安装前建议先看一下包的内容，确保不包含恶意代码。
+</aside>
+
+<h2>扩展包的目录结构</h2>
+
+<p>
+一个可共享的扩展包通常有以下结构：
+</p>
+
+<pre><code>pi-skill-my-tool/
+├── package.json
+├── extensions/
+│   └── my-tool.ts
+├── skills/
+│   └── my-tool.md
+└── README.md
+</code></pre>
+
+<p>
+<code>package.json</code> 里需要声明扩展类型：
+</p>
+
+<pre><code>{
+  "name": "pi-skill-my-tool",
+  "pi": {
+    "type": "extension",
+    "description": "My custom tool for X",
+    "entry": "extensions/my-tool.ts"
+  }
+}</code></pre>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. 三种扩展加载路径的优先级顺序是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">npm 包 &lt; 项目本地 &lt; 全局</label></li>
+      <li><label><input type="radio" name="q1" value="b">全局 &lt; 项目本地 &lt; npm 包</label></li>
+      <li><label><input type="radio" name="q1" value="c">项目本地 &lt; 全局 &lt; npm 包</label></li>
+      <li><label><input type="radio" name="q1" value="d">三个优先级一样，按文件名排序</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 怎么临时禁用一个已加载的扩展？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">把文件重命名加 .disabled 后缀</label></li>
+      <li><label><input type="radio" name="q2" value="b">删除文件</label></li>
+      <li><label><input type="radio" name="q2" value="c">运行 <code>pi disable</code></label></li>
+      <li><label><input type="radio" name="q2" value="d">在文件头部加注释标记</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. pi install 安装后，扩展被放在哪个目录下？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">~/.pi/agent/ 目录下的某个子目录</label></li>
+      <li><label><input type="radio" name="q3" value="b">~/.pi/agent/extensions/ 目录下</label></li>
+      <li><label><input type="radio" name="q3" value="c">安装到系统全局路径</label></li>
+      <li><label><input type="radio" name="q3" value="d">解压到项目本地目录</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="a"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方 <code>docs/extensions.md</code> 的 <em>Loading Extensions</em> 章节，
+  以及 Pi Discord 社区中关于扩展包开发的讨论。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "怎么判断当前加载了哪些扩展？"、"全局和项目本地的 Skill 冲突时怎么解决？"、"扩展包可以依赖 npm 包吗？"——随时问。
+</aside>
+
+<footer>
+  <p class="prev"><a href="0013-skills-and-prompts.html">← 第 13 课 · Skills 与 Prompt Templates</a></p>
+  <p class="next"><strong>下一节</strong>：<a href="0015-feishu-extension.html">第 15 课 · 飞书 Extension 实战</a>——接入飞书 API。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

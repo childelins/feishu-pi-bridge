@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Cn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 课 · Pi 的会话生命周期</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 3 · 核心概念</p>
+  <h1>Pi 的会话生命周期</h1>
+  <p class="meta">时长约 7 分钟</p>
+</header>
+
+<p>
+上一课你学会了安装和启动 Pi。
+现在来理解 Pi 的会话生命周期——从敲下 <code>pi</code> 到 <code>exit</code> 退出的完整流程。
+理解了这个，你就能看懂 <code>>></code> 提示符背后到底在发生什么。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能用自己的话描述：启动 Pi 后发生了什么、你按下回车后 Pi 如何思考并行动、以及一次完整的 "用户提问 → LLM 思考 → 执行工具 → 返回结果" 循环是怎么跑通的。
+</aside>
+
+<h2>从敲下 pi 到 exit 退出</h2>
+
+<p>
+Pi 的完整生命周期分为三个阶段。每个阶段都有明确的事要做。
+</p>
+
+<pre class="ascii">启动
+  │
+  ├─ ① 加载扩展 → 扫描 .pi/extensions/ 和 ~/.pi/agent/extensions/
+  │              → 扫描 npm 包
+  │
+  ├─ ② 初始化 Provider → 加载 API Key / OAuth 凭据
+  │                   → 初始化 LLM 连接
+  │
+  └─ ③ 进入交互循环 → 等待你输入
+                 → 按下回车，开始 Agent 循环
+                 → exit，清理资源，回到 shell</pre>
+
+<h2>阶段 1：加载扩展</h2>
+
+<p>
+Pi 启动时，第一步是扫描你（或第三方）写的 Extension。
+</p>
+
+<pre><code>扫描顺序：
+  1. 项目本地：.pi/extensions/*.ts
+  2. 用户全局：~/.pi/agent/extensions/*.ts
+  3. npm 包：pi install 安装的第三方包</code></pre>
+
+<p>
+扩展被加载后，它们用 <code>pi.registerTool()</code>、<code>pi.registerCommand()</code> 等方法向 Pi 注册能力。
+扩展加载的顺序决定了能力的优先级。
+</p>
+
+<aside class="note">
+  <span class="label">为什么先加载扩展？</span>
+  Agent 循环中 LLM 能调用的工具列表，是在扩展加载阶段就定好的。扩展没加载，工具就不存在。
+</aside>
+
+<h2>阶段 2：初始化 Provider</h2>
+
+<p>
+扩展加载完后，Pi 初始化 LLM 连接。
+</p>
+
+<pre><code>凭据来源（优先级从高到低）：
+  1. --api-key 命令行参数
+  2. ~/.pi/agent/auth.json（/login 写入）
+  3. 环境变量（ANTHROPIC_API_KEY、OPENAI_API_KEY 等）</code></pre>
+
+<p>
+如果找不到凭据，Pi 会提示你去 <code>/login</code>。没有 LLM 连接，Agent 循环跑不起来。
+</p>
+
+<h2>阶段 3：交互循环——按下回车后</h2>
+
+<p>
+前两个阶段完成后，你看到 <code>>></code> 提示符。
+这是最值得理解的部分——你按下回车后，Pi 内部发生的事：
+</p>
+
+<pre class="ascii">你输入："列出项目里的所有 ts 文件"
+          │
+          ▼
+  ┌─────────────────────────────────────┐
+  │  Agent Loop（重复直到回答完成）     │
+  │                                     │
+  │  ① LLM 思考（Thinking）             │
+  │     "用户要列出 ts 文件，           │
+  │      我应该调用 find 工具"          │
+  │                                     │
+  │  ② LLM 发出工具调用（Tool Call）    │
+  │     { name: "find",                  │
+  │       arguments: { pattern: "*.ts" } }│
+  │                                     │
+  │  ③ Pi 执行工具（Execute）           │
+  │     运行 shell 命令，返回结果        │
+  │                                     │
+  │  ④ LLM 观察结果（Observation）      │
+  │     "找到了 23 个文件，             │
+  │      我来整理一下回复用户"          │
+  │                                     │
+  │  ⑤ LLM 回复你（Response）           │
+  │     "项目里有 23 个 .ts 文件..."     │
+  └─────────────────────────────────────┘
+          │
+          ▼
+  >>>  （等待下一次输入）</pre>
+
+<p>
+这个循环称为 <strong>Agent Loop</strong>——思考、行动、观察，直到任务完成。
+大部分时候你看不到中间步骤，Pi 会自动完成工具调用然后给你一个综合回复。
+</p>
+
+<h2>四个界面区域</h2>
+
+<p>
+Pi 的界面固定分为四个区域，从上到下：
+</p>
+
+<table>
+  <thead>
+    <tr><th>区域</th><th>位置</th><th>内容</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>顶部信息栏</td>
+      <td>最上方</td>
+      <td>快捷键、已加载的 AGENTS.md、当前模型</td>
+    </tr>
+    <tr>
+      <td>消息区</td>
+      <td>中间</td>
+      <td>你的消息、LLM 的回复、工具调用和结果</td>
+    </tr>
+    <tr>
+      <td>输入框</td>
+      <td>消息区下方</td>
+      <td>输入自然语言指令的地方，边框颜色表示思考等级</td>
+    </tr>
+    <tr>
+      <td>底部状态栏</td>
+      <td>最下方</td>
+      <td>工作目录、session 名、token 用量、当前模型</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>退出</h2>
+
+<p>
+<code>exit</code> 或 <kbd>Ctrl</kbd>+<kbd>C</kbd> 两次。
+Pi 清理资源，保存 session 到 <code>~/.pi/agent/sessions/</code>，然后回到 shell。
+</p>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. Pi 启动时第一个做的是？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a">初始化 LLM 连接</label></li>
+      <li><label><input type="radio" name="q1" value="b">扫描并加载扩展</label></li>
+      <li><label><input type="radio" name="q1" value="c">读取 AGENTS.md</label></li>
+      <li><label><input type="radio" name="q1" value="d">询问用户选择模型</label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 你按下回车后，LLM 执行的"思考→行动→观察"循环叫做？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">Agent Loop</label></li>
+      <li><label><input type="radio" name="q2" value="b">Provider Loop</label></li>
+      <li><label><input type="radio" name="q2" value="c">Extension Loop</label></li>
+      <li><label><input type="radio" name="q2" value="d">Session Loop</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="a"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. Session 退出时保存在哪里？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a">~/.pi/agent/sessions/</label></li>
+      <li><label><input type="radio" name="q3" value="b">当前目录/.pi/sessions/</label></li>
+      <li><label><input type="radio" name="q3" value="c">~/.pi/sessions/</label></li>
+      <li><label><input type="radio" name="q3" value="d">内存中，不保存</label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="a"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  Agent 循环的源码在 <code>packages/agent-core/</code>，交互模式实现在 <code>packages/coding-agent/src/modes/interactive/</code>。想深入可以读 <code>agent-session.ts</code>。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  任何环节不清楚——"LLM 是怎么决定调用哪个工具的"、"扩展加载失败会怎样"、"session 文件格式是什么"——直接来问。
+</aside>
+
+<footer>
+  <p class="next"><strong>下一节</strong>：<a href="0004-agent-loop.html">第 4 课 · Agent Loop 详解</a>——更仔细地看 LLM 的思考、工具调用和观察步骤。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

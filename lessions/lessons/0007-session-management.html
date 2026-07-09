@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 7 课 · Session 管理与分支</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 7 · 进阶</p>
+  <h1>Session 管理与分支</h1>
+  <p class="meta">时长约 6 分钟</p>
+</header>
+
+<p>
+Pi 自动保存你的每次对话为 Session。
+理解 Session 怎么工作，能让你在复杂任务中保持方向感，并在需要时回到任意节点继续。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  到这一课结束时，你应该能：用 <code>/resume</code> 恢复之前的对话、用 <code>/tree</code> 在历史里跳转和分支、用 <code>/fork</code> 和 <code>/clone</code> 创建新分支，并在会话变长时用 <code>/compact</code> 手动压缩。
+</aside>
+
+<h2>Session 是什么？</h2>
+
+<p>
+Session 就是 Pi 自动保存的对话记录。每次你启动 <code>pi</code>，它创建一个 Session；
+你退出时，Session 被保存到磁盘。
+</p>
+
+<pre><code>~/.pi/agent/sessions/
+├── --home-project--/
+│   ├── 2024-07-07_abc123.jsonl
+│   └── 2024-07-07_def456.jsonl
+└── --work-project--/
+    └── 2024-07-07_ghi789.jsonl</code></pre>
+
+<p>每个文件是一个 Session，内容按时间戳命名，按项目目录分组。</p>
+
+<h2>恢复 Session</h2>
+
+<p>继续最近的对话，用 <code>pi -c</code> 或在交互模式里输入 <code>/resume</code>。</p>
+
+<pre><code># 启动时继续最近的 session
+pi -c
+
+# 启动时浏览并选择一个 session
+pi -r
+
+# 在交互模式里打开 session 选择器
+&gt;&gt; /resume</code></pre>
+
+<p>选择器支持搜索（直接打字）、切换路径显示（<kbd>Ctrl</kbd>+<kbd>P</kbd>）、按名称过滤（<kbd>Ctrl</kbd>+<kbd>N</kbd>）。</p>
+
+<div class="callout">
+  <p><strong>命名 Session</strong>：用 <code>/name Refactor auth module</code> 给当前 Session 起名。命名后的 Session 在选择器里更容易找到。</p>
+</div>
+
+<h2>Session 是树，不是线</h2>
+
+<p>
+Pi 的 Session 不是简单的线性记录——它是一个<strong>树结构</strong>。
+每个节点都有 <code>id</code> 和 <code>parentId</code>，从根到叶子的路径构成一个「活跃分支」。
+</p>
+
+<pre class="ascii">        [user: "怎么重构这个函数？"]
+              │
+        [assistant: "建议抽成三个函数"]
+        /                  \
+[user: "好，方案 A"]     [user: "方案 B 呢？"]
+        │                       │
+  [assistant: ...]         [assistant: ...]
+        │                       │
+   [active leaf]           [另一个分支]</pre>
+
+<p>
+这种设计意味着：你可以随时跳到之前的任意位置，从那里创建新分支继续，而不会丢失其他分支的上下文。
+</p>
+
+<h2>/tree — 在历史里跳转</h2>
+
+<p><code>/tree</code> 让你在当前 Session 的树里自由导航。</p>
+
+<pre><code>在 Pi 交互模式里输入 /tree</code></pre>
+
+<p>进入树视图后：</p>
+
+<table>
+  <thead>
+    <tr><th>快捷键</th><th>做什么</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>上下移动</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>选择并继续</td></tr>
+    <tr><td><kbd>Escape</kbd></td><td>取消</td></tr>
+    <tr><td><kbd>Shift</kbd>+<kbd>L</kbd></td><td>给节点打标签（书签）</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>切换过滤模式</td></tr>
+  </tbody>
+</table>
+
+<p>
+<code>/tree</code> 不创建新文件——它在当前 Session 内跳转。适合探索不同尝试方向，所有历史保留在同一文件里。
+</p>
+
+<h2>/fork — 创建新 Session 分支</h2>
+
+<p>
+当你确定要从某个历史点<strong>彻底分叉</strong>，用 <code>/fork</code>：
+创建一个新 Session 文件，从选中的节点开始继续。
+</p>
+
+<pre><code>在 /tree 里选好要分叉的节点 → /fork → 新 Session 文件创建完成</code></pre>
+
+<div class="callout">
+  <p><strong>/fork vs /tree</strong>：<code>/tree</code> 在原文件里跳转；<code>/fork</code> 创建新文件，保留两个独立分支。用 <code>/fork</code> 当你确定分叉是一个独立方向。</p>
+</div>
+
+<h2>/clone — 复制当前分支</h2>
+
+<p><code>/clone</code> 是 <code>/fork</code> 的简化版——直接复制当前活跃分支，从当前位置开始。</p>
+
+<pre><code>&gt;&gt; /clone  → 当前分支的完整历史被复制，新 session 打开为空编辑器</code></pre>
+
+<h2>/compact — 压缩上下文</h2>
+
+<p>
+Session 太长时，上下文会逼近模型的 token 上限。此时 Pi 会自动触发 Compaction（压缩）——
+把旧消息总结成摘要，保留摘要 + 最近的完整消息。
+</p>
+
+<p>手动触发：</p>
+
+<pre><code>&gt;&gt; /compact 或 &gt;&gt; /compact 聚焦于 bug 修复相关上下文</code></pre>
+
+<p>可选的 prompt 让你控制压缩的方向——比如"只保留 API 设计和当前 bug 相关的上下文"。</p>
+
+<h2>一个完整的分支工作流</h2>
+
+<div class="exercise">
+  <h3>在 Pi 里练习分支</h3>
+  <ol>
+    <li>启动 Pi，发送消息："我们来做一个 3 层塔的算法"</li>
+    <li>等它回复后，发送消息："不，换个思路，试试动态规划"</li>
+    <li>按 <kbd>Escape</kbd> 两次（或 <code>/tree</code>），切回到它第一个回复，按 <kbd>Enter</kbd></li>
+    <li>在分支 A 上继续："继续，递归解法怎么写？"</li>
+    <li>退出后重新启动 Pi，<code>/resume</code> 找到刚才的 session，观察两个分支</li>
+  </ol>
+  <p style="margin-top:0.75rem">如果今天只练一个，就练 <code>/tree</code> 切回分支——这是最有用的能力。</p>
+</div>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. 想要继续最近的对话，应该用？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a"><code>pi</code></label></li>
+      <li><label><input type="radio" name="q1" value="b"><code>pi -c</code></label></li>
+      <li><label><input type="radio" name="q1" value="c"><code>pi -r</code></label></li>
+      <li><label><input type="radio" name="q1" value="d"><code>/new</code></label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. 在当前会话内切回之前的某个节点继续，用什么命令？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a"><code>/resume</code></label></li>
+      <li><label><input type="radio" name="q2" value="b"><code>/fork</code></label></li>
+      <li><label><input type="radio" name="q2" value="c"><code>/clone</code></label></li>
+      <li><label><input type="radio" name="q2" value="d"><code>/tree</code></label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="d"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. 想从某个历史点彻底分叉成新 Session 文件，应该用？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a"><code>/tree</code></label></li>
+      <li><label><input type="radio" name="q3" value="b"><code>/new</code></label></li>
+      <li><label><input type="radio" name="q3" value="c"><code>/fork</code></label></li>
+      <li><label><input type="radio" name="q3" value="d"><code>/compact</code></label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="c"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  官方文档 <a href="https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md" target="_blank">docs/sessions.md</a>。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "Session 文件太大怎么办？"、"怎么导出某个 Session 给同事？"——随时问。
+</aside>
+
+<footer>
+  <p class="next"><strong>下一节</strong>：<a href="0008-extension-concepts-modes.html">第 8 课 · Extension 概念与四种运行模式</a>——先理解 Extension 是什么，再动手写。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>

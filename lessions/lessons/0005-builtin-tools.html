@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 课 · 四个内置工具详解</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 5 · 工具篇</p>
+  <h1>四个内置工具详解</h1>
+  <p class="meta">时长约 7 分钟</p>
+</header>
+
+<p>
+Pi 内置了四个基础工具：<code>read</code>、<code>write</code>、<code>edit</code>、<code>bash</code>。
+它们是 Agent Loop 里 LLM 最常调用的操作。
+</p>
+
+<aside class="note">
+  <span class="label">本课目标</span>
+  学完这一课，你应该能说出每个工具的参数、适用场景和限制，并理解 LLM 如何决定用哪个工具。
+</aside>
+
+<h2>一图看懂</h2>
+
+<table>
+  <thead>
+    <tr><th>工具</th><th>用途</th><th>典型参数</th><th>返回值</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>read</code></td>
+      <td>读取文件内容</td>
+      <td><code>path</code>, <code>offset</code>, <code>limit</code></td>
+      <td>文件内容（文本或图片）</td>
+    </tr>
+    <tr>
+      <td><code>bash</code></td>
+      <td>执行 shell 命令</td>
+      <td><code>command</code>, <code>timeout</code></td>
+      <td>stdout/stderr、退出码</td>
+    </tr>
+    <tr>
+      <td><code>edit</code></td>
+      <td>精确替换文件内容</td>
+      <td><code>path</code>, <code>edits</code> (旧字符串→新字符串)</td>
+      <td>diff 预览</td>
+    </tr>
+    <tr>
+      <td><code>write</code></td>
+      <td>创建或覆盖文件</td>
+      <td><code>path</code>, <code>content</code></td>
+      <td>写入确认</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>另外还有三个辅助只读工具：<code>grep</code>、<code>find</code>、<code>ls</code>，它们默认也可用，但核心操作还是上面四个。</p>
+
+<h2>① read —— 读文件</h2>
+
+<p>最常用的工具。参数：</p>
+
+<ul>
+  <li><code>path</code>（必须）：相对或绝对路径。</li>
+  <li><code>offset</code>（可选）：从第几行开始读（1-indexed）。</li>
+  <li><code>limit</code>（可选）：最多读多少行。</li>
+</ul>
+
+<pre><code># 读整个文件
+read(path="package.json")
+
+# 读第 10-20 行
+read(path="src/app.ts", offset=10, limit=11)</code></pre>
+
+<p>支持图片：粘贴图片或拖入终端时，Pi 会将其转为 base64 图像内容给 LLM。</p>
+
+<aside class="note">
+  <span class="label">返回值截断</span>
+  大文件会被截断（默认 5000 行或 200KB），并在末尾显示截断提示，避免撑爆上下文。
+</aside>
+
+<h2>② bash —— 运行 shell 命令</h2>
+
+<p>执行任意 shell 命令，返回输出。参数：</p>
+
+<ul>
+  <li><code>command</code>（必须）：要执行的命令。</li>
+  <li><code>timeout</code>（可选）：超时秒数，无默认值（命令可无限运行）。</li>
+</ul>
+
+<pre><code>bash(command="find . -name '*.ts'")
+bash(command="npm run build", timeout=60)</code></pre>
+
+<p>注意：</p>
+
+<ul>
+  <li>命令在 Pi 的工作目录（cwd）中执行。</li>
+  <li>输出会被截断（默认 5000 行或 200KB），截断部分会在尾部标记。</li>
+  <li>交互式命令（如 <code>vim</code>）不适合直接调用，因为 Pi 不是交互式 shell。</li>
+</ul>
+
+<aside class="note">
+  <span class="label">安全限制</span>
+  Pi 会限制命令执行环境，但本质上它能在你的项目目录运行任何命令——谨慎对待你让 Pi 运行的命令。
+</aside>
+
+<h2>③ edit —— 精确替换</h2>
+
+<p><code>edit</code> 是 Pi 最强大的编辑工具，它通过<strong>精确字符串匹配</strong>来修改文件。</p>
+
+<pre><code>edit(
+  path="src/index.ts",
+  edits: [
+    { oldText: "const port = 3000;", newText: "const port = 8080;" },
+    { oldText: "console.log('start')", newText: "// console.log('start')" }
+  ]
+)</code></pre>
+
+<p>参数：</p>
+
+<ul>
+  <li><code>path</code>：文件路径。</li>
+  <li><code>edits</code>：一个数组，每个元素包含 <code>oldText</code> 和 <code>newText</code>。</li>
+</ul>
+
+<p>关键规则：</p>
+
+<ol>
+  <li><strong>oldText 必须在文件中唯一出现</strong>——如果出现多次，编辑会失败。</li>
+  <li><strong>多个 edits 不能重叠或嵌套</strong>——每个编辑针对原文件独立匹配。</li>
+  <li><strong>匹配是精确的</strong>——包括空格、换行、缩进。LLM 必须从 <code>read</code> 复制原内容。</li>
+</ol>
+
+<aside class="note">
+  <span class="label">为什么不用行号？</span>
+  因为行号在代码变更中容易漂移，精确字符串匹配更鲁棒。LLM 通过 <code>read</code> 拿到精确内容，再交给 <code>edit</code>。
+</aside>
+
+<h2>④ write —— 创建或覆盖文件</h2>
+
+<p>直接写入整个文件内容。参数：</p>
+
+<ul>
+  <li><code>path</code>：文件路径。</li>
+  <li><code>content</code>：要写入的完整内容。</li>
+</ul>
+
+<pre><code>write(
+  path="newfile.txt",
+  content="Hello, world!\n"
+)</code></pre>
+
+<p>如果文件已存在，<code>write</code> 会覆盖它。通常 <code>edit</code> 更安全，因为只改小片段；<code>write</code> 用于创建新文件或完全重写。Pi 不会自动备份，所以建议在版本控制（git）下使用。</p>
+
+<h2>LLM 如何选择工具？</h2>
+
+<p>LLM 在 Agent Loop 中根据你的指令和上下文，自主决定调用哪个工具。通常的决策逻辑：</p>
+
+<ul>
+  <li>需要<strong>查看信息</strong> → <code>read</code>（或 <code>grep</code>/<code>find</code>/<code>ls</code>）</li>
+  <li>需要<strong>运行命令</strong> → <code>bash</code></li>
+  <li>需要<strong>修改文件</strong> → 优先 <code>edit</code>（精确、安全），只有创建新文件或完全重写时才用 <code>write</code></li>
+</ul>
+
+<p>你不需要手动指定工具，只要清晰描述任务，LLM 会组合这些工具来完成任务。</p>
+
+<h2>练习</h2>
+
+<div class="exercise">
+  <h3>识别工具调用</h3>
+  <p>下面是一个 Pi 会话片段。判断每个工具调用对应哪个内置工具：</p>
+  <ol>
+    <li><code>pi</code> 执行了 <code>{ name: "read", arguments: { path: "src/main.rs" } }</code></li>
+    <li><code>pi</code> 执行了 <code>{ name: "bash", arguments: { command: "cargo build" } }</code></li>
+    <li><code>pi</code> 执行了 <code>{ name: "edit", arguments: { path: "Cargo.toml", edits: [{ oldText: "version = \"0.1.0\"", newText: "version = \"0.2.0\"" }] } }</code></li>
+  </ol>
+  <p style="margin-top:0.75rem;margin-bottom:0">答案很明显——但想想 LLM 为什么按这个顺序调用它们。</p>
+</div>
+
+<h2>检查你的理解</h2>
+
+<div class="quiz">
+  <div class="q">
+    <div class="q-text">1. 哪个工具用于精确修改文件中的小片段？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q1" value="a"><code>write</code></label></li>
+      <li><label><input type="radio" name="q1" value="b"><code>edit</code></label></li>
+      <li><label><input type="radio" name="q1" value="c"><code>bash</code></label></li>
+      <li><label><input type="radio" name="q1" value="d"><code>read</code></label></li>
+    </ul>
+    <div class="feedback" data-q="1" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">2. <code>edit</code> 要求 <code>oldText</code> 在文件中必须？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q2" value="a">至少出现一次</label></li>
+      <li><label><input type="radio" name="q2" value="b">唯一出现</label></li>
+      <li><label><input type="radio" name="q2" value="c">出现多次也没关系</label></li>
+      <li><label><input type="radio" name="q2" value="d">必须出现在文件开头</label></li>
+    </ul>
+    <div class="feedback" data-q="2" data-right="b"></div>
+  </div>
+
+  <div class="q">
+    <div class="q-text">3. 哪个工具通常用于创建新文件？</div>
+    <ul class="options">
+      <li><label><input type="radio" name="q3" value="a"><code>edit</code></label></li>
+      <li><label><input type="radio" name="q3" value="b"><code>bash</code></label></li>
+      <li><label><input type="radio" name="q3" value="c"><code>write</code></label></li>
+      <li><label><input type="radio" name="q3" value="d"><code>read</code></label></li>
+    </ul>
+    <div class="feedback" data-q="3" data-right="c"></div>
+  </div>
+
+  <button onclick="gradeQuiz()">提交</button>
+  <button onclick="resetQuiz()" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-left:0.5rem">重置</button>
+</div>
+
+<script>
+  function gradeQuiz() {
+    document.querySelectorAll('.quiz .q').forEach(q => {
+      const fb = q.querySelector('.feedback');
+      const qId = fb.dataset.q;
+      const right = fb.dataset.right;
+      const checked = q.querySelector(`input[name=q${qId}]:checked`);
+      if (!checked) { fb.textContent = '选一个答案再提交。'; fb.className = 'feedback show wrong'; return; }
+      if (checked.value === right) { fb.textContent = '正确。'; fb.className = 'feedback show right'; }
+      else { fb.textContent = '再想想——回到上面相应的段落看一眼。'; fb.className = 'feedback show wrong'; }
+    });
+  }
+  function resetQuiz() {
+    document.querySelectorAll('.quiz input[type=radio]').forEach(r => r.checked = false);
+    document.querySelectorAll('.quiz .feedback').forEach(f => { f.className = 'feedback'; f.textContent = ''; });
+  }
+</script>
+
+<aside class="note">
+  <span class="label">推荐阅读</span>
+  源码中每个工具的定义：<a href="https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/" target="_blank">packages/coding-agent/src/core/tools/</a>。看 <code>read.ts</code>、<code>bash.ts</code>、<code>edit.ts</code>、<code>write.ts</code> 的 Schema 定义就能理解参数。
+</aside>
+
+<aside class="note">
+  <span class="label">老师在线</span>
+  "为什么编辑时 oldText 必须唯一？"、"bash 命令如果超时会怎样？"、"能同时用多个 edit 吗？"——随时问。
+</aside>
+
+<footer>
+  <p class="next"><strong>下一节</strong>：<a href="0006-slash-and-context.html">第 6 课 · Slash 命令与 Context Files</a>——玩转 6 个核心 Slash 命令，学会用 AGENTS.md 指导 Pi。</p>
+  <p>常驻参考：<a href="../GLOSSARY.md">术语表</a> · <a href="../RESOURCES.md">外部资源</a></p>
+</footer>
+
+</body>
+</html>
