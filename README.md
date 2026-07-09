@@ -73,7 +73,7 @@ cp .env.example .env
 项目 `pi/` 目录包含 Pi Agent 的扩展配置，初次部署需拷贝到 `~/.pi/agent/`：
 
 ```bash
-cp -r pi/pi/* ~/.pi/agent/
+cp -r pi/agent/* ~/.pi/agent/
 ```
 
 拷贝后在 `~/.pi/agent/prompts/` 下执行 `pnpm install` 安装日报 prompt 依赖。
@@ -82,17 +82,17 @@ cp -r pi/pi/* ~/.pi/agent/
 
 | 路径 | 用途 |
 |---|---|
-| `pi/pi/claude-commands.ts` | 自定义斜杠命令扩展 |
-| `pi/pi/provider-tencent.ts` | Tencent provider 扩展 |
-| `pi/pi/statusline.ts` | 状态栏扩展 |
-| `pi/pi/prompts/daily-report.md` | 日报 prompt 模板 |
-| `pi/pi/skills/aihot/` | AI 热榜 skill |
-| `pi/pi/skills/tavily-search/` | Tavily 搜索 skill |
-| `pi/pi/skills/github-trending/` | GitHub Trending skill |
-| `pi/pi/skills/edge-tts/` | Edge TTS skill |
-| `pi/pi/skills/frontend-design/` | 前端设计 skill |
-| `pi/pi/skills/hyperframes/` | Hyperframes skill |
-| `pi/pi/skills/teach/` | 教学 skill |
+| `pi/agent/claude-commands.ts` | 自定义斜杠命令扩展 |
+| `pi/agent/provider-tencent.ts` | Tencent provider 扩展 |
+| `pi/agent/statusline.ts` | 状态栏扩展 |
+| `pi/agent/prompts/daily-report.md` | 日报 prompt 模板 |
+| `pi/agent/skills/aihot/` | AI 热榜 skill |
+| `pi/agent/skills/tavily-search/` | Tavily 搜索 skill |
+| `pi/agent/skills/github-trending/` | GitHub Trending skill |
+| `pi/agent/skills/edge-tts/` | Edge TTS skill |
+| `pi/agent/skills/frontend-design/` | 前端设计 skill |
+| `pi/agent/skills/hyperframes/` | Hyperframes skill |
+| `pi/agent/skills/teach/` | 教学 skill |
 
 ## 使用
 
