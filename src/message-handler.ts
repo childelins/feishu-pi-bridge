@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config, resolveModelArg } from './config.js';
 import { logger } from './logger.js';
 import type { FeishuClient, IncomingMessage } from './feishu-client.js';
 import type { PiRpcPool } from './pi-rpc-pool.js';
@@ -215,7 +215,8 @@ export class MessageHandler {
       return;
     }
 
-    if (arg === 'reset' || arg === 'default' || arg === '0') {
+    const resolved = resolveModelArg(arg, config.pi.modelMap);
+    if (resolved.kind === 'default') {
       const had = this.pool.clearOverride(chatId);
       await this.pool.remove(chatId);
       logger.info(`/model reset chat=${chatId} hadOverride=${had}`);
@@ -223,28 +224,14 @@ export class MessageHandler {
       return;
     }
 
-    if (/^\d+$/.test(arg)) {
-      const n = Number(arg);
-      const modelId = config.pi.modelMap[n];
-      if (!modelId) {
-        const nums = Object.keys(config.pi.modelMap).map(Number).sort((a, b) => a - b);
-        const hint = nums.length > 0
-          ? `可用编号：0(默认),${nums.join(',')}`
-          : '未配置 FEISHU_MODEL_MAP（请在 .env 设置，如 "1=glm-5.2,2=deepseek-v4-flash-202605"）';
-        await this.cmdReply(chatId, `✗ 无效编号 ${n}。${hint}`);
-        return;
-      }
-      this.pool.setOverride(chatId, { model: modelId });
-      await this.pool.remove(chatId);
-      logger.info(`/model set chat=${chatId} idx=${n} model=${modelId}`);
-      await this.cmdReply(chatId, `✓ 已切换到 ${modelId}（下条消息生效）`);
+    if (resolved.kind === 'error') {
+      await this.cmdReply(chatId, `✗ ${resolved.message}`);
       return;
     }
-
-    this.pool.setOverride(chatId, { model: arg });
+    this.pool.setOverride(chatId, { model: resolved.model });
     await this.pool.remove(chatId);
-    logger.info(`/model set chat=${chatId} model=${arg}`);
-    await this.cmdReply(chatId, `✓ 已切换到 ${arg}（下条消息生效）`);
+    logger.info(`/model set chat=${chatId} model=${resolved.model}`);
+    await this.cmdReply(chatId, `✓ 已切换到 ${resolved.model}（下条消息生效）`);
   }
 
   private async cmdHelp(chatId: string): Promise<void> {

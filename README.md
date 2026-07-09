@@ -92,6 +92,34 @@ cp .env.example .env
 - 添加事件 `im.message.receive_v1`
 - 发布应用并拉进群
 
+## Pi 扩展包安装
+
+> https://pi.dev/package
+
+### 安装命令
+
+```bash
+pi install npm:@gotgenes/pi-subagents
+pi install npm:@gotgenes/pi-permission-system
+pi install npm:@juicesharp/rpiv-todo
+pi install npm:pi-tool-display
+pi install npm:@ff-labs/pi-fff
+pi install npm:@plannotator/pi-extension
+```
+
+或批量写入 `~/.pi/agent/settings.json` 的 `packages` 字段后重启 Pi，首次启动会自动安装。
+
+### 扩展包列表
+
+| 包名 | 用途 |
+|---|---|
+| `@gotgenes/pi-subagents` | 子代理功能 |
+| `@gotgenes/pi-permission-system` | 权限管理 |
+| `@juicesharp/rpiv-todo` | Todo 功能 |
+| `pi-tool-display` | 工具调用结果的简洁显示 |
+| `@ff-labs/pi-fff` | 查询增强（注册 fffind / ffgrep 工具，索引后查询极快） |
+| `@plannotator/pi-extension` | 计划模式（Ctrl+Alt+P 切换） |
+
 ## Pi Agent 扩展
 
 项目 `pi/` 目录包含 Pi Agent 的扩展配置，初次部署需拷贝到 `~/.pi/agent/`：

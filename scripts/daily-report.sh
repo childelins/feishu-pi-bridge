@@ -7,6 +7,13 @@
 # 默认每次以全新 pi 会话生成日报（清理 feishu-daily-report-bot 的历史 session，
 # 避免旧日报上下文污染当天输出）。额外参数透传给 node：
 #   --keep-session   保留并复用历史 session（仅调试用）
+#   --model=<arg>    指定生成日报所用模型（测试用）。语义同飞书 /model：
+#                    数字按 .env FEISHU_MODEL_MAP 映射（如 --model=2）；
+#                    含 "/" 的串视为 provider/model（如 --model=Tencent/deepseek-v4-pro-202606）；
+#                    其它串按 model id（如 --model=glm-4.6）。
+#                    --model=0 / reset / default = 用默认 PI_MODEL（等同不带此参数）。
+#                    当前可用编号见 .env 的 FEISHU_MODEL_MAP（示例：1=NewAPI/glm-5.2,2=...,3=...），
+#                    无效编号会报错并使本次运行失败退出。
 #
 # 这个脚本封装 cron 环境天然缺失的两样东西：
 #   1. nvm 管理的 node/pnpm 不在 cron 的默认 PATH 里

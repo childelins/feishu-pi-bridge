@@ -5,13 +5,14 @@ import * as cli from './cli.js';
 import { FeishuClient } from './feishu-client.js';
 import { PiRpcPool } from './pi-rpc-pool.js';
 import { pushDailyReport } from './daily-report.js';
-import { assertFeishuConfig } from './config.js';
+import { assertFeishuConfig, config, resolveModelArg } from './config.js';
 
 const args = parseArgs({
   options: {
     follow: { type: 'boolean', short: 'f', default: false },
     lines: { type: 'string', short: 'n', default: '50' },
     'keep-session': { type: 'boolean', default: false },
+    model: { type: 'string' },
   },
   allowPositionals: true,
   strict: false,
@@ -28,6 +29,19 @@ async function main(): Promise<void> {
       assertFeishuConfig();
       const feishu = new FeishuClient();
       const pool = new PiRpcPool();
+
+      // --model：测试日报时切换模型，语义同飞书 /model。override 存于 pool.overrides，
+      // pushDailyReport 内部的 remove(botChatId)（杀进程）不会清掉它，getOrCreate 会读到。
+      const modelArg = args.values.model;
+      if (typeof modelArg === 'string') {
+        const resolved = resolveModelArg(modelArg, config.pi.modelMap);
+        if (resolved.kind === 'error') throw new Error(`--model: ${resolved.message}`);
+        if (resolved.kind === 'model') {
+          pool.setOverride(config.dailyReport.botChatId, { model: resolved.model });
+        }
+        // kind === 'default'：不 setOverride，沿用 PI_MODEL
+      }
+
       try {
         await pushDailyReport({
           feishu,

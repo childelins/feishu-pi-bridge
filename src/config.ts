@@ -94,6 +94,39 @@ function parseModelMap(raw: string | undefined): Record<number, string> {
   return out;
 }
 
+export type ModelArgResult =
+  | { kind: 'default' }
+  | { kind: 'model'; model: string }
+  | { kind: 'error'; message: string };
+
+/**
+ * 解析 /model 与 daily-report --model 的参数，保证两者语义一致。
+ *  - "0"/"reset"/"default" → 用默认 PI_MODEL
+ *  - 纯数字 → 按 modelMap 查表，无效编号返回 error
+ *  - 其它字符串 → 原样作为 model（含 "/" 时由 resolveModel 走 provider/id 解析）
+ */
+export function resolveModelArg(
+  arg: string,
+  modelMap: Record<number, string>,
+): ModelArgResult {
+  if (arg === 'reset' || arg === 'default' || arg === '0') {
+    return { kind: 'default' };
+  }
+  if (/^\d+$/.test(arg)) {
+    const n = Number(arg);
+    const modelId = modelMap[n];
+    if (!modelId) {
+      const nums = Object.keys(modelMap).map(Number).sort((a, b) => a - b);
+      const hint = nums.length > 0
+        ? `可用编号：0(默认),${nums.join(',')}`
+        : '未配置 FEISHU_MODEL_MAP（请在 .env 设置，如 "1=glm-5.2,2=deepseek-v4-flash-202605"）';
+      return { kind: 'error', message: `无效编号 ${n}。${hint}` };
+    }
+    return { kind: 'model', model: modelId };
+  }
+  return { kind: 'model', model: arg };
+}
+
 export const config = {
   feishu: {
     appId: process.env.FEISHU_APP_ID ?? '',
