@@ -4,6 +4,30 @@
 可日常使用的常驻服务，额外支持：进程启停（start/stop/restart）、状态查询
 （status）、日志跟随（logs）、多 chat session 隔离、错误恢复、idle 自动清理。
 
+## 前置教学
+
+`lessons/` 目录包含 15 课 HTML 教程，从零开始介绍 Pi Agent 及其扩展开发，是本项目的前置知识：
+
+| 文件 | 课题 |
+|---|---|
+| `lessons/0001-what-is-pi.html` | 第 1 课 · Pi 是什么 |
+| `lessons/0002-install-and-start.html` | 第 2 课 · 安装与启动 Pi |
+| `lessons/0003-session-lifecycle.html` | 第 3 课 · Pi 的会话生命周期 |
+| `lessons/0004-agent-loop.html` | 第 4 课 · Agent Loop 详解 |
+| `lessons/0005-builtin-tools.html` | 第 5 课 · 四个内置工具详解 |
+| `lessons/0006-slash-and-context.html` | 第 6 课 · Slash 命令与 Context Files |
+| `lessons/0007-session-management.html` | 第 7 课 · Session 管理与分支 |
+| `lessons/0008-extension-concepts-modes.html` | 第 8 课 · Extension 概念与四种运行模式 |
+| `lessons/0009-first-extension.html` | 第 9 课 · 你的第一个 Extension |
+| `lessons/0010-commands-and-events.html` | 第 10 课 · 注册命令与事件钩子 |
+| `lessons/0011-extension-state-and-ui.html` | 第 11 课 · Session 持久化与交互 UI |
+| `lessons/0012-custom-provider.html` | 第 12 课 · 自定义 LLM Provider |
+| `lessons/0013-skills-and-prompts.html` | 第 13 课 · Skills 与 Prompt Templates |
+| `lessons/0014-pi-package.html` | 第 14 课 · Pi Package 与扩展加载机制 |
+| `lessons/0015-feishu-extension.html` | 第 15 课 · 飞书长连接接入：不需要公网 IP |
+
+建议按顺序阅读，第 15 课直接与本项目相关。
+
 ## 工作原理
 
 ```
