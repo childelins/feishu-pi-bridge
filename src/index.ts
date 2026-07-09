@@ -2,11 +2,16 @@
 import { parseArgs } from 'node:util';
 import { runDaemon } from './daemon.js';
 import * as cli from './cli.js';
+import { FeishuClient } from './feishu-client.js';
+import { PiRpcPool } from './pi-rpc-pool.js';
+import { pushDailyReport } from './daily-report.js';
+import { assertFeishuConfig } from './config.js';
 
 const args = parseArgs({
   options: {
     follow: { type: 'boolean', short: 'f', default: false },
     lines: { type: 'string', short: 'n', default: '50' },
+    'keep-session': { type: 'boolean', default: false },
   },
   allowPositionals: true,
   strict: false,
@@ -19,6 +24,21 @@ async function main(): Promise<void> {
     case 'daemon':
       await runDaemon();
       break;
+    case 'daily-report': {
+      assertFeishuConfig();
+      const feishu = new FeishuClient();
+      const pool = new PiRpcPool();
+      try {
+        await pushDailyReport({
+          feishu,
+          pool,
+          freshSession: !args.values['keep-session'],
+        });
+      } finally {
+        await pool.closeAll().catch(() => undefined);
+      }
+      break;
+    }
     case 'start':
       await cli.start();
       break;

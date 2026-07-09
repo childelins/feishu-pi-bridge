@@ -1,6 +1,7 @@
 import * as Lark from '@larksuiteoapi/node-sdk';
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { buildCard, type CardOpts } from './feishu-card.js';
 
 export interface IncomingMessage {
   chatId: string;
@@ -39,18 +40,51 @@ export class FeishuClient {
   }
 
   async replyText(chatId: string, text: string): Promise<void> {
+    await this.sendWithRetry(() =>
+      this.client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          content: JSON.stringify({ text }),
+          msg_type: 'text',
+        },
+      }),
+    );
+  }
+
+  async replyCard(chatId: string, opts: CardOpts): Promise<{ messageId: string }> {
+    const res = await this.sendWithRetry(() =>
+      this.client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          msg_type: 'interactive',
+          content: buildCard(opts),
+        },
+      }),
+    );
+    const r = res as { message_id?: string; data?: { message_id?: string } };
+    const messageId = r?.message_id ?? r?.data?.message_id;
+    if (!messageId) {
+      throw new Error('replyCard: missing message_id in response');
+    }
+    return { messageId };
+  }
+
+  async patchCard(messageId: string, opts: CardOpts): Promise<void> {
+    await this.sendWithRetry(() =>
+      this.client.im.v1.message.patch({
+        data: { content: buildCard(opts) },
+        path: { message_id: messageId },
+      }),
+    );
+  }
+
+  private async sendWithRetry<T>(fn: () => Promise<T>): Promise<T> {
     let lastErr: unknown = null;
     for (let attempt = 1; attempt <= config.retry.replyMaxAttempts; attempt++) {
       try {
-        await this.client.im.v1.message.create({
-          params: { receive_id_type: 'chat_id' },
-          data: {
-            receive_id: chatId,
-            content: JSON.stringify({ text }),
-            msg_type: 'text',
-          },
-        });
-        return;
+        return await fn();
       } catch (err) {
         lastErr = err;
         if (attempt < config.retry.replyMaxAttempts) {
@@ -59,7 +93,7 @@ export class FeishuClient {
         }
       }
     }
-    throw lastErr instanceof Error ? lastErr : new Error(`replyText failed: ${String(lastErr)}`);
+    throw lastErr instanceof Error ? lastErr : new Error(`send failed: ${String(lastErr)}`);
   }
 
   startEventLoop(handler: MessageHandler): void {

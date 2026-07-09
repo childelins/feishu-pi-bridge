@@ -200,6 +200,8 @@ Usage:
   feishu-pi-bridge restart            Restart daemon
   feishu-pi-bridge status             Show daemon status
   feishu-pi-bridge logs [-f] [-n N]   Tail logs (default 50, -f follow)
+  feishu-pi-bridge daily-report       Trigger /daily-report and push to FEISHU_DAILY_REPORT_CHAT_ID
+                                      (默认新会话；--keep-session 复用历史 session)
   feishu-pi-bridge help               Show this help
 
 Files:

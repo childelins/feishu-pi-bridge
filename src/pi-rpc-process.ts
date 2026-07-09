@@ -1,9 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { config } from './config.js';
+import { config, sanitizeChatId, sessionIdFor } from './config.js';
 import { logger } from './logger.js';
 
 export interface PiRpcProcessOptions {
   chatId: string;
+  provider?: string;
+  model?: string;
   onExit?: (code: number | null, signal: NodeJS.Signals | null) => void;
 }
 
@@ -11,10 +13,6 @@ interface PendingPrompt {
   resolve: (text: string | null) => void;
   reject: (err: Error) => void;
   timer: NodeJS.Timeout;
-}
-
-function sanitizeChatId(chatId: string): string {
-  return chatId.replace(/[^A-Za-z0-9_-]/g, '_');
 }
 
 function extractAssistantText(messages: unknown[]): string {
@@ -46,16 +44,17 @@ export class PiRpcProcess {
     this.chatId = opts.chatId;
     this.onExitCb = opts.onExit;
 
-    const sessionId = `feishu-${sanitizeChatId(opts.chatId)}`;
-    this.proc = spawn('pi', [
-      '--mode', 'rpc',
-      '--session-id', sessionId,
-    ], {
+    const sessionId = sessionIdFor(opts.chatId);
+    const args = ['--mode', 'rpc', '--session-id', sessionId];
+    if (opts.provider) args.push('--provider', opts.provider);
+    if (opts.model) args.push('--model', opts.model);
+    this.proc = spawn('pi', args, {
       stdio: ['pipe', 'pipe', 'inherit'],
       env: { ...process.env },
     });
 
-    logger.info(`rpc spawn chat=${opts.chatId} pid=${this.proc.pid ?? 'n/a'} session=${sessionId}`);
+    const modelInfo = [opts.provider, opts.model].filter(Boolean).join('/') || 'default';
+    logger.info(`rpc spawn chat=${opts.chatId} pid=${this.proc.pid ?? 'n/a'} session=${sessionId} model=${modelInfo}`);
 
     this.proc.stdout?.setEncoding('utf-8');
     this.proc.stdout?.on('data', (chunk: string) => this.onStdoutData(chunk));
