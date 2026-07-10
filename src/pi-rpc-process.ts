@@ -6,6 +6,7 @@ export interface PiRpcProcessOptions {
   chatId: string;
   provider?: string;
   model?: string;
+  workdir?: string;
   onExit?: (code: number | null, signal: NodeJS.Signals | null) => void;
 }
 
@@ -48,13 +49,15 @@ export class PiRpcProcess {
     const args = ['--mode', 'rpc', '--session-id', sessionId];
     if (opts.provider) args.push('--provider', opts.provider);
     if (opts.model) args.push('--model', opts.model);
-    this.proc = spawn('pi', args, {
+    const spawnOpts: Parameters<typeof spawn>[2] = {
       stdio: ['pipe', 'pipe', 'inherit'],
       env: { ...process.env },
-    });
+    };
+    if (opts.workdir) spawnOpts.cwd = opts.workdir;
+    this.proc = spawn('pi', args, spawnOpts);
 
     const modelInfo = [opts.provider, opts.model].filter(Boolean).join('/') || 'default';
-    logger.info(`rpc spawn chat=${opts.chatId} pid=${this.proc.pid ?? 'n/a'} session=${sessionId} model=${modelInfo}`);
+    logger.info(`rpc spawn chat=${opts.chatId} pid=${this.proc.pid ?? 'n/a'} session=${sessionId} model=${modelInfo} cwd=${opts.workdir ?? '(inherit)'}`);
 
     this.proc.stdout?.setEncoding('utf-8');
     this.proc.stdout?.on('data', (chunk: string) => this.onStdoutData(chunk));

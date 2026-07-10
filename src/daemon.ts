@@ -49,7 +49,7 @@ export async function runDaemon(): Promise<void> {
   }
 
   const feishu = new FeishuClient();
-  const pool = new PiRpcPool();
+  const pool = new PiRpcPool(config.paths.workdir);
   const handler = new MessageHandler({ feishu, pool });
   const ipc = new IpcServer({
     pid: process.pid,

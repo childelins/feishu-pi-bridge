@@ -20,6 +20,11 @@ export class PiRpcPool {
   private lastActive = new Map<string, number>();
   private overrides = new Map<string, ModelOverride>();
   private sweepTimer: NodeJS.Timeout | null = null;
+  private readonly workdir: string | undefined;
+
+  constructor(workdir?: string) {
+    this.workdir = workdir;
+  }
 
   private resolveModel(chatId: string): ModelOverride {
     const override = this.overrides.get(chatId);
@@ -42,6 +47,7 @@ export class PiRpcPool {
       chatId,
       provider: model.provider,
       model: model.model,
+      workdir: this.workdir,
       onExit: () => {
         if (this.procs.get(chatId) === proc) {
           this.procs.delete(chatId);

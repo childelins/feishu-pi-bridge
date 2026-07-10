@@ -55,9 +55,12 @@
 ```bash
 cd ~/code/projects/feishu-pi-bridge
 pnpm install
-pnpm run build
-pnpm link --global        # 让 feishu-pi-bridge 全局可用
+npx tsc                    # 编译到 dist/，全局 feishu-pi-bridge 命令自动刷新（符号链接已指向 dist/index.js）
 ```
+
+全局命令 `feishu-pi-bridge` 与项目软链已建好（`dist/index.js`）。**改代码后只需 `npx tsc`** 重新编译，全局命令自动指向最新版本——不用重新 link。
+
+（说明：`pnpm run build:link` 因 pnpm 10+ 的 `verifyDepsBeforeRun` 与 `link` 命令格式变更已不再适用，直接用 `npx tsc` 即可。）
 
 ## 配置
 
@@ -83,6 +86,7 @@ cp .env.example .env
 | `FEISHU_MODEL_MAP` | `/model <编号>` 快捷切换映射，格式 `1=provider/model,2=model` |
 | `FEISHU_DAILY_REPORT_CHAT_ID` | 日报推送目标群 chat_id（使用日报功能必填） |
 | `FEISHU_BRIDGE_ENV_FILE` | 显式指定 .env 路径（默认从 cwd 或项目根目录查找） |
+| `FEISHU_BRIDGE_WORKDIR` | Pi 子进程工作目录（默认继承 bridge 进程 cwd）。所有 Pi 执行的 shell 命令、文件操作都在此目录下进行，需要指向有意义的项目目录 |
 | `FEISHU_BRIDGE_NO_ENV_OVERRIDE` | 设为 `1` 时 .env 不覆盖已存在的系统环境变量 |
 
 飞书开放平台要求：
@@ -284,9 +288,9 @@ cron 环境不 source 任何 shell 配置，缺两样东西会让日报失败：
 ## 开发
 
 ```bash
-pnpm run dev             # tsc --watch
-pnpm run build           # 编译到 dist/
-node dist/index.js help  # 直接运行（不经全局 link）
+pnpm run dev               # tsc --watch（持续监听）
+npx tsc                    # 编译到 dist/（改代码后刷新 feishu-pi-bridge 命令）
+node dist/index.js help    # 直接运行（不经全局命令）
 ```
 
 源码组织（`src/`）：

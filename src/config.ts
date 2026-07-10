@@ -1,9 +1,21 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const PI_AGENT_DIR = join(homedir(), '.pi/agent');
+
+function resolveWorkdir(): string | undefined {
+  const raw = process.env.FEISHU_BRIDGE_WORKDIR?.trim();
+  if (!raw) return undefined;
+  // 相对路径基于 bridge 进程 cwd 解析，确保 spawn 时拿到绝对路径
+  const dir = isAbsolute(raw) ? raw : resolve(process.cwd(), raw);
+  if (!existsSync(dir)) {
+    console.warn(`[feishu-pi-bridge] FEISHU_BRIDGE_WORKDIR 不存在：${raw}（解析为 ${dir}），将忽略并继承 bridge 进程 cwd`);
+    return undefined;
+  }
+  return dir;
+}
 
 function resolveEnvPath(): string | null {
   const explicit = process.env.FEISHU_BRIDGE_ENV_FILE;
@@ -139,6 +151,7 @@ export const config = {
   },
   paths: {
     agentDir: PI_AGENT_DIR,
+    workdir: resolveWorkdir(),
     pidFile: join(PI_AGENT_DIR, 'feishu-pi-bridge.pid'),
     logFile: join(PI_AGENT_DIR, 'feishu-pi-bridge.log'),
     sockFile: join(PI_AGENT_DIR, 'feishu-pi-bridge.sock'),
