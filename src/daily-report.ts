@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config, allocateDailyWorkdir } from './config.js';
 import { logger } from './logger.js';
 import type { FeishuClient } from './feishu-client.js';
 import type { PiRpcPool } from './pi-rpc-pool.js';
@@ -45,6 +45,15 @@ export async function pushDailyReport(opts: PushDailyReportOptions): Promise<voi
   }
 
   const botChatId = config.dailyReport.botChatId;
+
+  // 按本地日期分配日报专属 workdir（daily-report-YYYYMMDD）：同一天复用同一目录，
+  // 跨天自然新建。无 base（FEISHU_BRIDGE_WORKDIR 未配）时不分配，沿用进程 cwd。
+  const base = config.paths.workdir;
+  if (base) {
+    const dailyDir = allocateDailyWorkdir(base);
+    opts.pool.setChatWorkdir(botChatId, dailyDir);
+    logger.info(`daily-report workdir botChat=${botChatId} dir=${dailyDir}`);
+  }
 
   if (opts.freshSession) {
     await opts.pool.remove(botChatId).catch(() => undefined);

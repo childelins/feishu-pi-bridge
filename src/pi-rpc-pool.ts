@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config, allocateChatWorkdir } from './config.js';
 import { logger } from './logger.js';
 import { PiRpcProcess } from './pi-rpc-process.js';
 
@@ -19,11 +19,33 @@ export class PiRpcPool {
   private procs = new Map<string, PiRpcProcess>();
   private lastActive = new Map<string, number>();
   private overrides = new Map<string, ModelOverride>();
+  /**
+   * chatId → 该会话实例的实际 workdir（绝对路径）。
+   * 每次新分配一个带时间戳的子目录，/new 后清空对应项，使下次 getOrCreate 重新分配。
+   * 若未配置 FEISHU_BRIDGE_WORKDIR（base 为空），则不分配，spawn 继承进程 cwd。
+   */
+  private workdirs = new Map<string, string>();
   private sweepTimer: NodeJS.Timeout | null = null;
-  private readonly workdir: string | undefined;
+  private readonly workdirBase: string | undefined;
 
-  constructor(workdir?: string) {
-    this.workdir = workdir;
+  constructor(workdirBase?: string) {
+    this.workdirBase = workdirBase;
+  }
+
+  /**
+   * 显式指定某 chatId 的 workdir（如日报按天目录）。优先于自动分配。
+   * 在 getOrCreate 之前调用；后续同一 chatId 复用此目录。
+   */
+  setChatWorkdir(chatId: string, dir: string): void {
+    this.workdirs.set(chatId, dir);
+  }
+
+  /**
+   * 清掉某 chatId 的 workdir 映射，使下次 getOrCreate 重新分配新目录。
+   * /new 时调用，配合 deleteSessionFiles 实现真正的会话隔离。
+   */
+  clearWorkdir(chatId: string): void {
+    this.workdirs.delete(chatId);
   }
 
   private resolveModel(chatId: string): ModelOverride {
@@ -43,11 +65,12 @@ export class PiRpcPool {
       return existing;
     }
     const model = this.resolveModel(chatId);
+    const workdir = this.resolveWorkdirFor(chatId);
     const proc = new PiRpcProcess({
       chatId,
       provider: model.provider,
       model: model.model,
-      workdir: this.workdir,
+      workdir,
       onExit: () => {
         if (this.procs.get(chatId) === proc) {
           this.procs.delete(chatId);
@@ -58,6 +81,22 @@ export class PiRpcPool {
     this.procs.set(chatId, proc);
     this.lastActive.set(chatId, Date.now());
     return proc;
+  }
+
+  /**
+   * 计算 chatId 的 workdir：
+   *  - base 未配置 → 返回 undefined（spawn 继承 bridge 进程 cwd，旧行为）
+   *  - 已有显式映射（setChatWorkdir）或自动分配的实例目录 → 复用
+   *  - 否则在 base 下分配新带时间戳子目录并 mkdir
+   */
+  private resolveWorkdirFor(chatId: string): string | undefined {
+    if (!this.workdirBase) return undefined;
+    const cached = this.workdirs.get(chatId);
+    if (cached) return cached;
+    const dir = allocateChatWorkdir(this.workdirBase, chatId);
+    this.workdirs.set(chatId, dir);
+    logger.info(`workdir allocated chat=${chatId} dir=${dir}`);
+    return dir;
   }
 
   touch(chatId: string): void {

@@ -9,10 +9,11 @@ export interface CardOpts {
 export const CARD_CONTENT_LIMIT = 28_000;
 
 export function truncateMarkdown(md: string, limit: number = CARD_CONTENT_LIMIT): string {
-  if (md.length <= limit) return md;
-  const trimmed = limit - 30;
-  if (trimmed <= 0) return md.slice(0, limit);
-  return md.slice(0, trimmed) + `\n\n…（已截断 ${md.length - trimmed} 字）`;
+  const trimmed = md.trimStart();
+  if (trimmed.length <= limit) return trimmed;
+  const cut = limit - 30;
+  if (cut <= 0) return trimmed.slice(0, limit);
+  return trimmed.slice(0, cut) + `\n\n…（已截断 ${trimmed.length - cut} 字）`;
 }
 
 /**
@@ -36,20 +37,21 @@ export function chunkMarkdown(md: string, limit: number = CARD_CONTENT_LIMIT): s
   let cur = '';
 
   const flush = (): void => {
-    const trimmed = cur.trimEnd();
+    const trimmed = cur.trim();
     if (trimmed) chunks.push(trimmed);
     cur = '';
   };
 
   for (const section of sections) {
     if (!section) continue;
-    const candidate = cur ? `${cur}\n\n${section}` : section;
+    const norm = section.trimStart();
+    const candidate = cur ? `${cur}\n\n${norm}` : norm;
     if (candidate.length <= limit) {
       cur = candidate;
     } else if (section.length <= limit) {
       // 当前块装不下这一节，但该节单独能装下 → 封箱开新块
       flush();
-      cur = section;
+      cur = section.replace(/^\n+/, '');
     } else {
       // 单节就超 limit → 按行边界二次切片
       flush();
@@ -106,7 +108,8 @@ interface CardSchema {
 
 export function buildCard(opts: CardOpts): string {
   const template: CardTemplate = opts.template ?? 'green';
-  const content = opts.markdown ?? '';
+  // 去掉 markdown 前导空白，避免飞书卡片正文出现多余空行（Pi 回复首行常带前导换行）。
+  const content = (opts.markdown ?? '').replace(/^\s+/, '');
   const card: CardSchema = {
     config: { update_multi: true },
     header: {

@@ -29,7 +29,9 @@ function extractAssistantText(messages: unknown[]): string {
       }
       return typeof content === 'string' ? content : '';
     })
-    .join('\n\n');
+    .join('\n\n')
+    .replace(/^\n+/, '')
+    .trimStart();
 }
 
 export class PiRpcProcess {
@@ -162,7 +164,7 @@ export class PiRpcProcess {
         const [id, p] = entry;
         clearTimeout(p.timer);
         this.pending.delete(id);
-        p.resolve(extractAssistantText(ev.messages ?? []));
+        p.resolve(extractAssistantText(ev.messages ?? []).replace(/^\n+/, ''));
       } else {
         logger.warn(`rpc agent_end with no pending prompt chat=${this.chatId}`);
       }

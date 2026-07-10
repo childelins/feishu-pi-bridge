@@ -1,9 +1,54 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const PI_AGENT_DIR = join(homedir(), '.pi/agent');
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/**
+ * 本地时间戳，用于 chat 会话实例的 workdir 子目录名：YYYYMMDDTHHmmss。
+ * 同一 chatId 每次 /new 后获得一个新目录，保证会话间文件操作真正隔离。
+ * 不用 ISO UTC 是为了让目录名可读且按本地日期排序。
+ */
+export function timestampForChatDir(d: Date = new Date()): string {
+  return (
+    `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}` +
+    `T${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`
+  );
+}
+
+/**
+ * 本地日期，用于日报 workdir 子目录名：YYYYMMDD。同一天复用同一目录，
+ * 跨天自然新建，避免日报间文件互相污染。
+ */
+export function dateForDailyDir(d: Date = new Date()): string {
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+}
+
+/**
+ * 在 base 下为 chatId 分配并创建独立的 workdir 子目录。
+ * 命名：feishu-<sanitized-chatId>-<timestamp>。返回绝对路径。
+ */
+export function allocateChatWorkdir(base: string, chatId: string): string {
+  const sanitized = sanitizeChatId(chatId);
+  const dir = join(base, `feishu-${sanitized}-${timestampForChatDir()}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * 在 base 下计算日报 workdir 子目录路径（按本地日期）。
+ * 同一天返回同一目录，跨天自然新建。返回绝对路径。
+ */
+export function allocateDailyWorkdir(base: string, d: Date = new Date()): string {
+  const dir = join(base, `daily-report-${dateForDailyDir(d)}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
 
 function resolveWorkdir(): string | undefined {
   const raw = process.env.FEISHU_BRIDGE_WORKDIR?.trim();

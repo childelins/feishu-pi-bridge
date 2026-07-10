@@ -72,7 +72,7 @@ export class MessageHandler {
       const reply = await proc.prompt(prefixed);
       this.pool.touch(chatId);
       const opts: CardOpts = reply
-        ? { title: config.reply.replyTitle, template: 'green', markdown: truncateMarkdown(reply) }
+        ? { title: config.reply.replyTitle, template: 'green', markdown: truncateMarkdown(reply.trimStart()) }
         : { title: config.reply.replyTitle, template: 'grey', markdown: config.reply.emptyText };
       await this.finalizeReply(chatId, card, opts);
       logger.info(`reply chat=${chatId} text=${truncate(reply || config.reply.emptyText)}`);

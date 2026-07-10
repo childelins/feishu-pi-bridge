@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     case 'daily-report': {
       assertFeishuConfig();
       const feishu = new FeishuClient();
-      const pool = new PiRpcPool();
+      const pool = new PiRpcPool(config.paths.workdir);
 
       // --model：测试日报时切换模型，语义同飞书 /model。override 存于 pool.overrides，
       // pushDailyReport 内部的 remove(botChatId)（杀进程）不会清掉它，getOrCreate 会读到。
