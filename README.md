@@ -315,7 +315,7 @@ node dist/index.js help    # 直接运行（不经全局命令）
 - 启动失败先看 `~/.pi/agent/feishu-pi-bridge.log`
 - `status` 显示 not running 但 pid 文件存在：手动删 pid 文件
 - 飞书收不到消息：确认长连接模式已启用、机器人已拉群
-- Pi 回复慢或超时：调高 `config.ts` 里的 `rpcPromptMs`
+- Pi 回复慢或超时：通过环境变量 `FEISHU_BRIDGE_RPC_TIMEOUT_MS` 调整超时时间（默认 5 分钟）；日报走独立 10 分钟超时不受此影响
 - 验证扩展复用：发 `@机器人 /review`（依赖 `claude-commands.ts`），让 Pi 切到
   tencent provider（依赖 `provider-tencent.ts`）
 

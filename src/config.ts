@@ -106,6 +106,19 @@ function parseModelMap(raw: string | undefined): Record<number, string> {
   return out;
 }
 
+function parseRpcPromptMs(): number {
+  const raw = process.env.FEISHU_BRIDGE_RPC_TIMEOUT_MS?.trim();
+  if (!raw) return 300_000; // 默认 5 分钟
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1_000) {
+    console.warn(
+      `[feishu-pi-bridge] FEISHU_BRIDGE_RPC_TIMEOUT_MS 无效：${raw}（须为 >= 1000 的毫秒数），将回退默认 300000ms`,
+    );
+    return 300_000;
+  }
+  return Math.round(n);
+}
+
 export type ModelArgResult =
   | { kind: 'default' }
   | { kind: 'model'; model: string }
@@ -158,7 +171,7 @@ export const config = {
     sessionsDir: join(PI_AGENT_DIR, 'sessions'),
   },
   timeouts: {
-    rpcPromptMs: 30_000,
+    rpcPromptMs: parseRpcPromptMs(),
     rpcKillGraceMs: 5_000,
   },
   reply: {
