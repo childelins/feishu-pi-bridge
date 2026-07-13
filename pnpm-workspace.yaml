@@ -1,4 +1,2 @@
-allowBuilds:
-  protobufjs: set this to true or false
 onlyBuiltDependencies:
   - protobufjs
