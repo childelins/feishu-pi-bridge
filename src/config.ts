@@ -1,12 +1,12 @@
-import { readFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join, resolve, isAbsolute } from 'node:path';
-import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { join, resolve, isAbsolute } from 'node:path'
+import { homedir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 
-const PI_AGENT_DIR = join(homedir(), '.pi/agent');
+const PI_AGENT_DIR = join(homedir(), '.pi/agent')
 
 function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
+  return n < 10 ? `0${n}` : String(n)
 }
 
 /**
@@ -18,7 +18,7 @@ export function timestampForChatDir(d: Date = new Date()): string {
   return (
     `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}` +
     `T${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`
-  );
+  )
 }
 
 /**
@@ -26,7 +26,7 @@ export function timestampForChatDir(d: Date = new Date()): string {
  * 跨天自然新建，避免日报间文件互相污染。
  */
 export function dateForDailyDir(d: Date = new Date()): string {
-  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`
 }
 
 /**
@@ -34,10 +34,10 @@ export function dateForDailyDir(d: Date = new Date()): string {
  * 命名：feishu-<sanitized-chatId>-<timestamp>。返回绝对路径。
  */
 export function allocateChatWorkdir(base: string, chatId: string): string {
-  const sanitized = sanitizeChatId(chatId);
-  const dir = join(base, `feishu-${sanitized}-${timestampForChatDir()}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
+  const sanitized = sanitizeChatId(chatId)
+  const dir = join(base, `feishu-${sanitized}-${timestampForChatDir()}`)
+  mkdirSync(dir, { recursive: true })
+  return dir
 }
 
 /**
@@ -45,129 +45,135 @@ export function allocateChatWorkdir(base: string, chatId: string): string {
  * 同一天返回同一目录，跨天自然新建。返回绝对路径。
  */
 export function allocateDailyWorkdir(base: string, d: Date = new Date()): string {
-  const dir = join(base, `daily-report-${dateForDailyDir(d)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
+  const dir = join(base, `daily-report-${dateForDailyDir(d)}`)
+  mkdirSync(dir, { recursive: true })
+  return dir
 }
 
 function resolveWorkdir(): string | undefined {
-  const raw = process.env.FEISHU_BRIDGE_WORKDIR?.trim();
-  if (!raw) return undefined;
+  const raw = process.env.FEISHU_BRIDGE_WORKDIR?.trim()
+  if (!raw) return undefined
   // 相对路径基于 bridge 进程 cwd 解析，确保 spawn 时拿到绝对路径
-  const dir = isAbsolute(raw) ? raw : resolve(process.cwd(), raw);
+  const dir = isAbsolute(raw) ? raw : resolve(process.cwd(), raw)
   if (!existsSync(dir)) {
-    console.warn(`[feishu-pi-bridge] FEISHU_BRIDGE_WORKDIR 不存在：${raw}（解析为 ${dir}），将忽略并继承 bridge 进程 cwd`);
-    return undefined;
+    console.warn(
+      `[feishu-pi-bridge] FEISHU_BRIDGE_WORKDIR 不存在：${raw}（解析为 ${dir}），将忽略并继承 bridge 进程 cwd`,
+    )
+    return undefined
   }
-  return dir;
+  return dir
 }
 
 function resolveEnvPath(): string | null {
-  const explicit = process.env.FEISHU_BRIDGE_ENV_FILE;
-  if (explicit) return explicit;
+  const explicit = process.env.FEISHU_BRIDGE_ENV_FILE
+  if (explicit) return explicit
 
-  const cwdPath = join(process.cwd(), '.env');
-  if (existsSync(cwdPath)) return cwdPath;
+  const cwdPath = join(process.cwd(), '.env')
+  if (existsSync(cwdPath)) return cwdPath
 
   try {
-    const projectRoot = fileURLToPath(new URL('../', import.meta.url));
-    const projectPath = join(projectRoot, '.env');
-    if (existsSync(projectPath)) return projectPath;
+    const projectRoot = fileURLToPath(new URL('../', import.meta.url))
+    const projectPath = join(projectRoot, '.env')
+    if (existsSync(projectPath)) return projectPath
   } catch {
     // import.meta.url unavailable — skip
   }
-  return null;
+  return null
 }
 
 function loadEnvFile() {
-  const envPath = resolveEnvPath();
-  if (!envPath) return;
-  const content = readFileSync(envPath, 'utf-8');
-  const noOverride = process.env.FEISHU_BRIDGE_NO_ENV_OVERRIDE === '1';
+  const envPath = resolveEnvPath()
+  if (!envPath) return
+  const content = readFileSync(envPath, 'utf-8')
+  const noOverride = process.env.FEISHU_BRIDGE_NO_ENV_OVERRIDE === '1'
   for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"'))
-        || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq === -1) continue
+    const key = trimmed.slice(0, eq).trim()
+    let value = trimmed.slice(eq + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
     }
-    if (noOverride && key in process.env) continue;
-    process.env[key] = value;
+    if (noOverride && key in process.env) continue
+    process.env[key] = value
   }
 }
 
-loadEnvFile();
+loadEnvFile()
 
 function required(key: string): string {
-  const v = process.env[key];
+  const v = process.env[key]
   if (!v) {
-    console.error(`[feishu-pi-bridge] Missing required env var: ${key}`);
-    console.error('Set it in .env or via system env, then retry.');
-    process.exit(1);
+    console.error(`[feishu-pi-bridge] Missing required env var: ${key}`)
+    console.error('Set it in .env or via system env, then retry.')
+    process.exit(1)
   }
-  return v;
+  return v
 }
 
 export function assertFeishuConfig(): void {
-  required('FEISHU_APP_ID');
-  required('FEISHU_APP_SECRET');
+  required('FEISHU_APP_ID')
+  required('FEISHU_APP_SECRET')
 }
 
 export function sanitizeChatId(chatId: string): string {
-  return chatId.replace(/[^A-Za-z0-9_-]/g, '_');
+  return chatId.replace(/[^A-Za-z0-9_-]/g, '_')
 }
 
 export function sessionIdFor(chatId: string): string {
-  return `feishu-${sanitizeChatId(chatId)}`;
+  return `feishu-${sanitizeChatId(chatId)}`
 }
 
 function parseModelMap(raw: string | undefined): Record<number, string> {
-  const out: Record<number, string> = {};
-  if (!raw) return out;
+  const out: Record<number, string> = {}
+  if (!raw) return out
   for (const part of raw.split(',')) {
-    const item = part.trim();
-    if (!item) continue;
-    const eq = item.indexOf('=');
+    const item = part.trim()
+    if (!item) continue
+    const eq = item.indexOf('=')
     if (eq === -1) {
-      console.warn(`[feishu-pi-bridge] FEISHU_MODEL_MAP: skip invalid item "${item}" (expected n=modelId)`);
-      continue;
+      console.warn(
+        `[feishu-pi-bridge] FEISHU_MODEL_MAP: skip invalid item "${item}" (expected n=modelId)`,
+      )
+      continue
     }
-    const n = Number(item.slice(0, eq).trim());
-    const id = item.slice(eq + 1).trim();
+    const n = Number(item.slice(0, eq).trim())
+    const id = item.slice(eq + 1).trim()
     if (!Number.isInteger(n) || n < 1) {
-      console.warn(`[feishu-pi-bridge] FEISHU_MODEL_MAP: skip invalid index "${item}" (n must be integer >= 1; 0 is reserved for default)`);
-      continue;
+      console.warn(
+        `[feishu-pi-bridge] FEISHU_MODEL_MAP: skip invalid index "${item}" (n must be integer >= 1; 0 is reserved for default)`,
+      )
+      continue
     }
     if (!id) {
-      console.warn(`[feishu-pi-bridge] FEISHU_MODEL_MAP: skip empty model id for index ${n}`);
-      continue;
+      console.warn(`[feishu-pi-bridge] FEISHU_MODEL_MAP: skip empty model id for index ${n}`)
+      continue
     }
-    out[n] = id;
+    out[n] = id
   }
-  return out;
+  return out
 }
 
 function parseRpcPromptMs(): number {
-  const raw = process.env.FEISHU_BRIDGE_RPC_TIMEOUT_MS?.trim();
-  if (!raw) return 300_000; // 默认 5 分钟
-  const n = Number(raw);
+  const raw = process.env.FEISHU_BRIDGE_RPC_TIMEOUT_MS?.trim()
+  if (!raw) return 300_000 // 默认 5 分钟
+  const n = Number(raw)
   if (!Number.isFinite(n) || n < 1_000) {
     console.warn(
       `[feishu-pi-bridge] FEISHU_BRIDGE_RPC_TIMEOUT_MS 无效：${raw}（须为 >= 1000 的毫秒数），将回退默认 300000ms`,
-    );
-    return 300_000;
+    )
+    return 300_000
   }
-  return Math.round(n);
+  return Math.round(n)
 }
 
 export type ModelArgResult =
-  | { kind: 'default' }
-  | { kind: 'model'; model: string }
-  | { kind: 'error'; message: string };
+  { kind: 'default' } | { kind: 'model'; model: string } | { kind: 'error'; message: string }
 
 /**
  * 解析 /model 与 daily-report --model 的参数，保证两者语义一致。
@@ -175,26 +181,26 @@ export type ModelArgResult =
  *  - 纯数字 → 按 modelMap 查表，无效编号返回 error
  *  - 其它字符串 → 原样作为 model（含 "/" 时由 resolveModel 走 provider/id 解析）
  */
-export function resolveModelArg(
-  arg: string,
-  modelMap: Record<number, string>,
-): ModelArgResult {
+export function resolveModelArg(arg: string, modelMap: Record<number, string>): ModelArgResult {
   if (arg === 'reset' || arg === 'default' || arg === '0') {
-    return { kind: 'default' };
+    return { kind: 'default' }
   }
   if (/^\d+$/.test(arg)) {
-    const n = Number(arg);
-    const modelId = modelMap[n];
+    const n = Number(arg)
+    const modelId = modelMap[n]
     if (!modelId) {
-      const nums = Object.keys(modelMap).map(Number).sort((a, b) => a - b);
-      const hint = nums.length > 0
-        ? `可用编号：0(默认),${nums.join(',')}`
-        : '未配置 FEISHU_MODEL_MAP（请在 .env 设置，如 "1=glm-5.2,2=deepseek-v4-flash-202605"）';
-      return { kind: 'error', message: `无效编号 ${n}。${hint}` };
+      const nums = Object.keys(modelMap)
+        .map(Number)
+        .sort((a, b) => a - b)
+      const hint =
+        nums.length > 0
+          ? `可用编号：0(默认),${nums.join(',')}`
+          : '未配置 FEISHU_MODEL_MAP（请在 .env 设置，如 "1=glm-5.2,2=deepseek-v4-flash-202605"）'
+      return { kind: 'error', message: `无效编号 ${n}。${hint}` }
     }
-    return { kind: 'model', model: modelId };
+    return { kind: 'model', model: modelId }
   }
-  return { kind: 'model', model: arg };
+  return { kind: 'model', model: arg }
 }
 
 export const config = {
@@ -249,6 +255,6 @@ export const config = {
     botChatId: 'daily-report-bot',
     promptTimeoutMs: 600_000,
   },
-} as const;
+} as const
 
-export type Config = typeof config;
+export type Config = typeof config

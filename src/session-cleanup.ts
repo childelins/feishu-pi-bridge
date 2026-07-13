@@ -1,7 +1,7 @@
-import { readdir, stat, unlink } from 'node:fs/promises';
-import type { Stats } from 'node:fs';
-import { join } from 'node:path';
-import { config, sanitizeChatId } from './config.js';
+import { readdir, stat, unlink } from 'node:fs/promises'
+import type { Stats } from 'node:fs'
+import { join } from 'node:path'
+import { config, sanitizeChatId } from './config.js'
 
 /**
  * 删除指定 chat 对应的 pi session 文件，使下次 spawn pi 时以全新 session 启动。
@@ -14,44 +14,44 @@ import { config, sanitizeChatId } from './config.js';
  * @returns 已删除文件的绝对路径列表
  */
 export async function deleteSessionFiles(chatId: string): Promise<string[]> {
-  const sanitized = sanitizeChatId(chatId);
-  const suffix = `_feishu-${sanitized}.jsonl`;
-  const sessionsDir = config.paths.sessionsDir;
-  const deleted: string[] = [];
+  const sanitized = sanitizeChatId(chatId)
+  const suffix = `_feishu-${sanitized}.jsonl`
+  const sessionsDir = config.paths.sessionsDir
+  const deleted: string[] = []
 
-  let subs: string[];
+  let subs: string[]
   try {
-    subs = await readdir(sessionsDir);
+    subs = await readdir(sessionsDir)
   } catch {
-    return deleted;
+    return deleted
   }
 
   for (const sub of subs) {
-    const subPath = join(sessionsDir, sub);
-    let st: Stats;
+    const subPath = join(sessionsDir, sub)
+    let st: Stats
     try {
-      st = await stat(subPath);
+      st = await stat(subPath)
     } catch {
-      continue;
+      continue
     }
-    if (!st.isDirectory()) continue;
+    if (!st.isDirectory()) continue
 
-    let files: string[];
+    let files: string[]
     try {
-      files = await readdir(subPath);
+      files = await readdir(subPath)
     } catch {
-      continue;
+      continue
     }
     for (const file of files) {
-      if (!file.endsWith(suffix)) continue;
-      const fp = join(subPath, file);
+      if (!file.endsWith(suffix)) continue
+      const fp = join(subPath, file)
       try {
-        await unlink(fp);
-        deleted.push(fp);
+        await unlink(fp)
+        deleted.push(fp)
       } catch {
         // ignore individual unlink errors
       }
     }
   }
-  return deleted;
+  return deleted
 }

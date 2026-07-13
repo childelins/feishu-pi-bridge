@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { parseArgs } from 'node:util';
-import { runDaemon } from './daemon.js';
-import * as cli from './cli.js';
-import { FeishuClient } from './feishu-client.js';
-import { PiRpcPool } from './pi-rpc-pool.js';
-import { pushDailyReport } from './daily-report.js';
-import { assertFeishuConfig, config, resolveModelArg } from './config.js';
+import { parseArgs } from 'node:util'
+import { runDaemon } from './daemon.js'
+import * as cli from './cli.js'
+import { FeishuClient } from './feishu-client.js'
+import { PiRpcPool } from './pi-rpc-pool.js'
+import { pushDailyReport } from './daily-report.js'
+import { assertFeishuConfig, config, resolveModelArg } from './config.js'
 
 const args = parseArgs({
   options: {
@@ -16,28 +16,28 @@ const args = parseArgs({
   },
   allowPositionals: true,
   strict: false,
-});
+})
 
-const cmd = args.positionals[0] ?? 'help';
+const cmd = args.positionals[0] ?? 'help'
 
 async function main(): Promise<void> {
   switch (cmd) {
     case 'daemon':
-      await runDaemon();
-      break;
+      await runDaemon()
+      break
     case 'daily-report': {
-      assertFeishuConfig();
-      const feishu = new FeishuClient();
-      const pool = new PiRpcPool(config.paths.workdir);
+      assertFeishuConfig()
+      const feishu = new FeishuClient()
+      const pool = new PiRpcPool(config.paths.workdir)
 
       // --model：测试日报时切换模型，语义同飞书 /model。override 存于 pool.overrides，
       // pushDailyReport 内部的 remove(botChatId)（杀进程）不会清掉它，getOrCreate 会读到。
-      const modelArg = args.values.model;
+      const modelArg = args.values.model
       if (typeof modelArg === 'string') {
-        const resolved = resolveModelArg(modelArg, config.pi.modelMap);
-        if (resolved.kind === 'error') throw new Error(`--model: ${resolved.message}`);
+        const resolved = resolveModelArg(modelArg, config.pi.modelMap)
+        if (resolved.kind === 'error') throw new Error(`--model: ${resolved.message}`)
         if (resolved.kind === 'model') {
-          pool.setOverride(config.dailyReport.botChatId, { model: resolved.model });
+          pool.setOverride(config.dailyReport.botChatId, { model: resolved.model })
         }
         // kind === 'default'：不 setOverride，沿用 PI_MODEL
       }
@@ -47,43 +47,43 @@ async function main(): Promise<void> {
           feishu,
           pool,
           freshSession: !args.values['keep-session'],
-        });
+        })
       } finally {
-        await pool.closeAll().catch(() => undefined);
+        await pool.closeAll().catch(() => undefined)
       }
-      break;
+      break
     }
     case 'start':
-      await cli.start();
-      break;
+      await cli.start()
+      break
     case 'stop':
-      await cli.stop();
-      break;
+      await cli.stop()
+      break
     case 'restart':
-      await cli.restart();
-      break;
+      await cli.restart()
+      break
     case 'status':
-      await cli.status();
-      break;
+      await cli.status()
+      break
     case 'logs':
       await cli.logs({
         follow: Boolean(args.values.follow),
         lines: parseInt(String(args.values.lines ?? '50'), 10),
-      });
-      break;
+      })
+      break
     case 'help':
     case '--help':
     case '-h':
-      cli.printHelp();
-      break;
+      cli.printHelp()
+      break
     default:
-      console.error(`unknown command: ${cmd}`);
-      cli.printHelp();
-      process.exit(1);
+      console.error(`unknown command: ${cmd}`)
+      cli.printHelp()
+      process.exit(1)
   }
 }
 
 main().catch((err) => {
-  console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
-});
+  console.error(`error: ${err instanceof Error ? err.message : String(err)}`)
+  process.exit(1)
+})
